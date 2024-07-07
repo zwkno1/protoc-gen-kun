@@ -42,7 +42,7 @@ public:
     ~Buffer() { delete[] data_; }
 
     template <typename T>
-    void WriteIntergerPacked(int num, const std::vector<T>& values)
+    void WriteRepeatedInterger(int num, const std::vector<T>& values)
     {
         size_t size = RepeatIntergerByteSize(values);
         EnsureSpace(size + 32);
@@ -53,7 +53,7 @@ public:
     }
 
     template <typename T>
-    void WriteFixedPacked(int num, const std::vector<T>& values)
+    void WriteRepeatedFixed(int num, const std::vector<T>& values)
     {
         size_t size = RepeatedFixedByteSize(values);
         EnsureSpace(size + 32);

@@ -79,7 +79,7 @@ public:
         }
 
         if (!ints.empty()) {
-            b.WriteIntergerPacked(3, ints);
+            b.WriteRepeatedInterger(3, ints);
         }
 
     }
@@ -176,19 +176,19 @@ public:
         }
 
         if (!ints.empty()) {
-            b.WriteIntergerPacked(331, ints);
+            b.WriteRepeatedInterger(331, ints);
         }
 
         if (!uint64s.empty()) {
-            b.WriteIntergerPacked(9899, uint64s);
+            b.WriteRepeatedInterger(9899, uint64s);
         }
 
         if (!floats.empty()) {
-            b.WriteFixedPacked(12311, floats);
+            b.WriteRepeatedFixed(12311, floats);
         }
 
         if (!doubles.empty()) {
-            b.WriteFixedPacked(22311, doubles);
+            b.WriteRepeatedFixed(22311, doubles);
         }
 
         for (auto& entry : bbbs) {
@@ -196,11 +196,11 @@ public:
         }
 
         if (!uint32s.empty()) {
-            b.WriteIntergerPacked(12312312, uint32s);
+            b.WriteRepeatedInterger(12312312, uint32s);
         }
 
         if (!int64s.empty()) {
-            b.WriteIntergerPacked(12312364, int64s);
+            b.WriteRepeatedInterger(12312364, int64s);
         }
 
     }

@@ -253,7 +253,7 @@ public:
         p.Emit(
           R"cc(
           if (!$name$.empty()) {
-              b.WriteIntergerPacked($number$, $name$);
+              b.WriteRepeatedInterger($number$, $name$);
           }
           )cc");
     }
@@ -285,7 +285,7 @@ public:
         p.Emit(
           R"cc(
           if (!$name$.empty()) {
-              b.WriteFixedPacked($number$, $name$);
+              b.WriteRepeatedFixed($number$, $name$);
           }
           )cc");
     }
