@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package mytest;
+
+message BBB
+{
+    repeated string value = 1;
+    repeated int32 ints = 3;
+}
+
+message AAA
+{
+    int32 value = 11;
+    repeated string names = 2;
+    string xx = 23;
+    map<int32, int32> kvs = 3;
+    map<int32, BBB> kvs2 = 4;
+    Error e = 5;
+    bytes date = 6;
+    BBB bbb = 16;
+    // CCC ccc = 8;
+    float aaa = 33;
+    double d = 99;
+    repeated BBB bbbs = 123123;
+    repeated int32 ints = 331;
+    repeated uint32 uint32s = 12312312;
+    repeated float floats = 12311;
+    repeated double doubles = 22311;
+    repeated int64 int64s = 12312364;
+    repeated uint64 uint64s = 9899;
+}
+
+message CCC
+{
+    oneof value
+    {
+        int32 number = 1;
+        string str = 2;
+    }
+}
+
+enum Error
+{
+    E1 = 0;
+    E2 = 2;
+}
