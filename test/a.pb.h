@@ -79,6 +79,7 @@ namespace mytest {
 enum Error : int {
   E1 = 0,
   E2 = 2,
+  E3 = -1,
   Error_INT_MIN_SENTINEL_DO_NOT_USE_ =
       std::numeric_limits<::int32_t>::min(),
   Error_INT_MAX_SENTINEL_DO_NOT_USE_ =
@@ -87,7 +88,7 @@ enum Error : int {
 
 bool Error_IsValid(int value);
 extern const uint32_t Error_internal_data_[];
-constexpr Error Error_MIN = static_cast<Error>(0);
+constexpr Error Error_MIN = static_cast<Error>(-1);
 constexpr Error Error_MAX = static_cast<Error>(2);
 constexpr int Error_ARRAYSIZE = 2 + 1;
 const ::google::protobuf::EnumDescriptor*
@@ -102,7 +103,7 @@ const std::string& Error_Name(T value) {
 template <>
 inline const std::string& Error_Name(Error value) {
   return ::google::protobuf::internal::NameOfDenseEnum<Error_descriptor,
-                                                 0, 2>(
+                                                 -1, 2>(
       static_cast<int>(value));
 }
 inline bool Error_Parse(absl::string_view name, Error* value) {
@@ -710,6 +711,7 @@ class AAA final : public ::google::protobuf::Message
     kIntsFieldNumber = 331,
     kUint64SFieldNumber = 9899,
     kFloatsFieldNumber = 12311,
+    kErrorsFieldNumber = 12312,
     kDoublesFieldNumber = 22311,
     kBbbsFieldNumber = 123123,
     kUint32SFieldNumber = 12312312,
@@ -832,6 +834,25 @@ class AAA final : public ::google::protobuf::Message
   private:
   const ::google::protobuf::RepeatedField<float>& _internal_floats() const;
   ::google::protobuf::RepeatedField<float>* _internal_mutable_floats();
+
+  public:
+  // repeated .mytest.Error errors = 12312;
+  int errors_size() const;
+  private:
+  int _internal_errors_size() const;
+
+  public:
+  void clear_errors() ;
+  public:
+  ::mytest::Error errors(int index) const;
+  void set_errors(int index, ::mytest::Error value);
+  void add_errors(::mytest::Error value);
+  const ::google::protobuf::RepeatedField<int>& errors() const;
+  ::google::protobuf::RepeatedField<int>* mutable_errors();
+
+  private:
+  const ::google::protobuf::RepeatedField<int>& _internal_errors() const;
+  ::google::protobuf::RepeatedField<int>* _internal_mutable_errors();
 
   public:
   // repeated double doubles = 22311;
@@ -997,7 +1018,7 @@ class AAA final : public ::google::protobuf::Message
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      5, 17, 5,
+      5, 18, 5,
       42, 51>
       _table_;
 
@@ -1034,6 +1055,8 @@ class AAA final : public ::google::protobuf::Message
     ::google::protobuf::RepeatedField<::uint64_t> uint64s_;
     mutable ::google::protobuf::internal::CachedSize _uint64s_cached_byte_size_;
     ::google::protobuf::RepeatedField<float> floats_;
+    ::google::protobuf::RepeatedField<int> errors_;
+    mutable ::google::protobuf::internal::CachedSize _errors_cached_byte_size_;
     ::google::protobuf::RepeatedField<double> doubles_;
     ::google::protobuf::RepeatedPtrField< ::mytest::BBB > bbbs_;
     ::google::protobuf::RepeatedField<::uint32_t> uint32s_;
@@ -1983,6 +2006,51 @@ AAA::_internal_uint64s() const {
 inline ::google::protobuf::RepeatedField<::uint64_t>* AAA::_internal_mutable_uint64s() {
   ::google::protobuf::internal::TSanRead(&_impl_);
   return &_impl_.uint64s_;
+}
+
+// repeated .mytest.Error errors = 12312;
+inline int AAA::_internal_errors_size() const {
+  return _internal_errors().size();
+}
+inline int AAA::errors_size() const {
+  return _internal_errors_size();
+}
+inline void AAA::clear_errors() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.errors_.Clear();
+}
+inline ::mytest::Error AAA::errors(int index) const {
+  // @@protoc_insertion_point(field_get:mytest.AAA.errors)
+  return static_cast<::mytest::Error>(_internal_errors().Get(index));
+}
+inline void AAA::set_errors(int index, ::mytest::Error value) {
+  _internal_mutable_errors()->Set(index, value);
+  // @@protoc_insertion_point(field_set:mytest.AAA.errors)
+}
+inline void AAA::add_errors(::mytest::Error value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _internal_mutable_errors()->Add(value);
+  // @@protoc_insertion_point(field_add:mytest.AAA.errors)
+}
+inline const ::google::protobuf::RepeatedField<int>& AAA::errors() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_list:mytest.AAA.errors)
+  return _internal_errors();
+}
+inline ::google::protobuf::RepeatedField<int>* AAA::mutable_errors()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_mutable_list:mytest.AAA.errors)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _internal_mutable_errors();
+}
+inline const ::google::protobuf::RepeatedField<int>& AAA::_internal_errors()
+    const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.errors_;
+}
+inline ::google::protobuf::RepeatedField<int>* AAA::_internal_mutable_errors() {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return &_impl_.errors_;
 }
 
 // -------------------------------------------------------------------

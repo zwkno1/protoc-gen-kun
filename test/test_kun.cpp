@@ -8,22 +8,24 @@
 
 int main(int argc, char* argv[])
 {
-    double a = 0.f;
     mytest::AAA aaa;
     aaa.value = 123123;
     aaa.d = 123.123;
     aaa.bbb = mytest::BBB();
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 3000000; i++) {
         aaa.names.push_back(std::to_string(i));
-        aaa.ints.push_back(i);
-        aaa.floats.push_back(i * 3.5);
-        aaa.doubles.push_back(i * 4.7);
-        aaa.bbb->value.push_back(std::to_string(i * 10));
-        aaa.bbb->ints.push_back(i);
+        aaa.ints.push_back(i * -12352);
+        aaa.floats.push_back(i * 311.5);
+        aaa.doubles.push_back(i * 3231314.7);
+        aaa.bbb->value.push_back(std::to_string(i * 37843));
+        aaa.bbb->ints.push_back(i * 123131);
+        aaa.errors.push_back(mytest::Error(i));
+        //  aaa.kvs[i] = i * 1001;
+        //  std::cout << aaa.ByteSize() << std::endl;
     }
 
-    Buffer b;
+    kun::Buffer b;
     aaa.Serialize(b);
-    std::ofstream f("./my.bin", std::fstream::binary);
+    std::ofstream f("./kun.bin", std::fstream::binary);
     f.write((const char*)b.Data(), b.Size());
 }

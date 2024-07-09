@@ -50,9 +50,10 @@ void GenerateHeader(Printer& p)
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <map>
 #include <optional>
 
-#include "util.h"
+#include "kun.h"
 
 )cc");
 }

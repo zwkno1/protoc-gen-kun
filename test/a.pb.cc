@@ -101,6 +101,8 @@ inline constexpr AAA::Impl_::Impl_(
         uint64s_{},
         _uint64s_cached_byte_size_{0},
         floats_{},
+        errors_{},
+        _errors_cached_byte_size_{0},
         doubles_{},
         bbbs_{},
         uint32s_{},
@@ -198,6 +200,7 @@ const ::uint32_t
         PROTOBUF_FIELD_OFFSET(::mytest::AAA, _impl_.doubles_),
         PROTOBUF_FIELD_OFFSET(::mytest::AAA, _impl_.int64s_),
         PROTOBUF_FIELD_OFFSET(::mytest::AAA, _impl_.uint64s_),
+        PROTOBUF_FIELD_OFFSET(::mytest::AAA, _impl_.errors_),
         ~0u,
         ~0u,
         ~0u,
@@ -206,6 +209,7 @@ const ::uint32_t
         ~0u,
         ~0u,
         0,
+        ~0u,
         ~0u,
         ~0u,
         ~0u,
@@ -233,8 +237,8 @@ static const ::_pbi::MigrationSchema
         {0, -1, -1, sizeof(::mytest::BBB)},
         {10, 20, -1, sizeof(::mytest::AAA_KvsEntry_DoNotUse)},
         {22, 32, -1, sizeof(::mytest::AAA_Kvs2Entry_DoNotUse)},
-        {34, 59, -1, sizeof(::mytest::AAA)},
-        {76, -1, -1, sizeof(::mytest::CCC)},
+        {34, 60, -1, sizeof(::mytest::AAA)},
+        {78, -1, -1, sizeof(::mytest::CCC)},
 };
 static const ::_pb::Message* const file_default_instances[] = {
     &::mytest::_BBB_default_instance_._instance,
@@ -246,7 +250,7 @@ static const ::_pb::Message* const file_default_instances[] = {
 const char descriptor_table_protodef_a_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
     "\n\007a.proto\022\006mytest\"\"\n\003BBB\022\r\n\005value\030\001 \003(\t\022"
-    "\014\n\004ints\030\003 \003(\005\"\300\003\n\003AAA\022\r\n\005value\030\013 \001(\005\022\r\n\005"
+    "\014\n\004ints\030\003 \003(\005\"\340\003\n\003AAA\022\r\n\005value\030\013 \001(\005\022\r\n\005"
     "names\030\002 \003(\t\022\n\n\002xx\030\027 \001(\t\022!\n\003kvs\030\003 \003(\0132\024.m"
     "ytest.AAA.KvsEntry\022#\n\004kvs2\030\004 \003(\0132\025.mytes"
     "t.AAA.Kvs2Entry\022\030\n\001e\030\005 \001(\0162\r.mytest.Erro"
@@ -255,17 +259,18 @@ const char descriptor_table_protodef_a_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE
     "\0132\013.mytest.BBB\022\r\n\004ints\030\313\002 \003(\005\022\022\n\007uint32s"
     "\030\370\275\357\005 \003(\r\022\017\n\006floats\030\227` \003(\002\022\021\n\007doubles\030\247\256"
     "\001 \003(\001\022\021\n\006int64s\030\254\276\357\005 \003(\003\022\020\n\007uint64s\030\253M \003"
-    "(\004\032*\n\010KvsEntry\022\013\n\003key\030\001 \001(\005\022\r\n\005value\030\002 \001"
-    "(\005:\0028\001\0328\n\tKvs2Entry\022\013\n\003key\030\001 \001(\005\022\032\n\005valu"
-    "e\030\002 \001(\0132\013.mytest.BBB:\0028\001\"/\n\003CCC\022\020\n\006numbe"
-    "r\030\001 \001(\005H\000\022\r\n\003str\030\002 \001(\tH\000B\007\n\005value*\027\n\005Err"
-    "or\022\006\n\002E1\020\000\022\006\n\002E2\020\002b\006proto3"
+    "(\004\022\036\n\006errors\030\230` \003(\0162\r.mytest.Error\032*\n\010Kv"
+    "sEntry\022\013\n\003key\030\001 \001(\005\022\r\n\005value\030\002 \001(\005:\0028\001\0328"
+    "\n\tKvs2Entry\022\013\n\003key\030\001 \001(\005\022\032\n\005value\030\002 \001(\0132"
+    "\013.mytest.BBB:\0028\001\"/\n\003CCC\022\020\n\006number\030\001 \001(\005H"
+    "\000\022\r\n\003str\030\002 \001(\tH\000B\007\n\005value*(\n\005Error\022\006\n\002E1"
+    "\020\000\022\006\n\002E2\020\002\022\017\n\002E3\020\377\377\377\377\377\377\377\377\377\001b\006proto3"
 };
 static ::absl::once_flag descriptor_table_a_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_a_2eproto = {
     false,
     false,
-    586,
+    635,
     descriptor_table_protodef_a_2eproto,
     "a.proto",
     &descriptor_table_a_2eproto_once,
@@ -284,9 +289,9 @@ const ::google::protobuf::EnumDescriptor* Error_descriptor() {
   return file_level_enum_descriptors_a_2eproto[0];
 }
 PROTOBUF_CONSTINIT const uint32_t Error_internal_data_[] = {
-    65536u, 32u, 2u, };
+    196607u, 32u, 2u, };
 bool Error_IsValid(int value) {
-  return 0 <= value && value <= 2 && ((5u >> value) & 1) != 0;
+  return ::_pbi::ValidateEnum(value, Error_internal_data_);
 }
 // ===================================================================
 
@@ -589,6 +594,8 @@ inline PROTOBUF_NDEBUG_INLINE AAA::Impl_::Impl_(
         uint64s_{visibility, arena, from.uint64s_},
         _uint64s_cached_byte_size_{0},
         floats_{visibility, arena, from.floats_},
+        errors_{visibility, arena, from.errors_},
+        _errors_cached_byte_size_{0},
         doubles_{visibility, arena, from.doubles_},
         bbbs_{visibility, arena, from.bbbs_},
         uint32s_{visibility, arena, from.uint32s_},
@@ -633,6 +640,8 @@ inline PROTOBUF_NDEBUG_INLINE AAA::Impl_::Impl_(
         uint64s_{visibility, arena},
         _uint64s_cached_byte_size_{0},
         floats_{visibility, arena},
+        errors_{visibility, arena},
+        _errors_cached_byte_size_{0},
         doubles_{visibility, arena},
         bbbs_{visibility, arena},
         uint32s_{visibility, arena},
@@ -685,7 +694,7 @@ AAA::GetClassData() const {
   return _data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<5, 17, 5, 42, 51> AAA::_table_ = {
+const ::_pbi::TcParseTable<5, 18, 5, 42, 51> AAA::_table_ = {
   {
     PROTOBUF_FIELD_OFFSET(AAA, _impl_._has_bits_),
     0, // no _extensions_
@@ -693,7 +702,7 @@ const ::_pbi::TcParseTable<5, 17, 5, 42, 51> AAA::_table_ = {
     offsetof(decltype(_table_), field_lookup_table),
     4290739137,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    17,  // num_field_entries
+    18,  // num_field_entries
     5,  // num_aux_entries
     offsetof(decltype(_table_), aux_entries),
     &_AAA_default_instance_._instance,
@@ -759,11 +768,11 @@ const ::_pbi::TcParseTable<5, 17, 5, 42, 51> AAA::_table_ = {
      65534, 10,
     9899, 0, 1,
     65534, 11,12311, 0, 1,
-     65534, 12,22311, 0, 1,
-     65534, 13,57587, 1, 1,
-     65534, 14,57080, 187, 4,
-     65534, 15, 65535, 16,
-    65535, 16, 65519, 16,
+     65532, 12,22311, 0, 1,
+     65534, 14,57587, 1, 1,
+     65534, 15,57080, 187, 4,
+     65534, 16, 65535, 17,
+    65535, 17, 65519, 17,
     65535, 65535
   }}, {{
     // repeated string names = 2;
@@ -805,6 +814,9 @@ const ::_pbi::TcParseTable<5, 17, 5, 42, 51> AAA::_table_ = {
     // repeated float floats = 12311;
     {PROTOBUF_FIELD_OFFSET(AAA, _impl_.floats_), -1, 0,
     (0 | ::_fl::kFcRepeated | ::_fl::kPackedFloat)},
+    // repeated .mytest.Error errors = 12312;
+    {PROTOBUF_FIELD_OFFSET(AAA, _impl_.errors_), -1, 0,
+    (0 | ::_fl::kFcRepeated | ::_fl::kPackedOpenEnum)},
     // repeated double doubles = 22311;
     {PROTOBUF_FIELD_OFFSET(AAA, _impl_.doubles_), -1, 0,
     (0 | ::_fl::kFcRepeated | ::_fl::kPackedDouble)},
@@ -850,6 +862,7 @@ PROTOBUF_NOINLINE void AAA::Clear() {
   _impl_.ints_.Clear();
   _impl_.uint64s_.Clear();
   _impl_.floats_.Clear();
+  _impl_.errors_.Clear();
   _impl_.doubles_.Clear();
   _impl_.bbbs_.Clear();
   _impl_.uint32s_.Clear();
@@ -1007,6 +1020,15 @@ PROTOBUF_NOINLINE void AAA::Clear() {
     target = stream->WriteFixedPacked(12311, _internal_floats(), target);
   }
 
+  // repeated .mytest.Error errors = 12312;
+  {
+    std::size_t byte_size = _impl_._errors_cached_byte_size_.Get();
+    if (byte_size > 0) {
+      target = stream->WriteEnumPacked(12312, _internal_errors(),
+                                       byte_size, target);
+    }
+  }
+
   // repeated double doubles = 22311;
   if (this->_internal_doubles_size() > 0) {
     target = stream->WriteFixedPacked(22311, _internal_doubles(), target);
@@ -1116,6 +1138,23 @@ PROTOBUF_NOINLINE void AAA::Clear() {
                             static_cast<int32_t>(data_size))
     ;
     total_size += tag_size + data_size;
+  }
+  // repeated .mytest.Error errors = 12312;
+  {
+    std::size_t data_size = 0;
+    auto count = static_cast<std::size_t>(this->_internal_errors_size());
+
+    for (std::size_t i = 0; i < count; ++i) {
+      data_size += ::_pbi::WireFormatLite::EnumSize(
+          this->_internal_errors().Get(static_cast<int>(i)));
+    }
+    total_size += data_size;
+    if (data_size > 0) {
+      total_size += 3;
+      total_size += ::_pbi::WireFormatLite::Int32Size(
+          static_cast<int32_t>(data_size));
+    }
+    _impl_._errors_cached_byte_size_.Set(::_pbi::ToCachedSize(data_size));
   }
   // repeated double doubles = 22311;
   {
@@ -1230,6 +1269,7 @@ void AAA::MergeImpl(::google::protobuf::MessageLite& to_msg, const ::google::pro
   _this->_internal_mutable_ints()->MergeFrom(from._internal_ints());
   _this->_internal_mutable_uint64s()->MergeFrom(from._internal_uint64s());
   _this->_internal_mutable_floats()->MergeFrom(from._internal_floats());
+  _this->_internal_mutable_errors()->MergeFrom(from._internal_errors());
   _this->_internal_mutable_doubles()->MergeFrom(from._internal_doubles());
   _this->_internal_mutable_bbbs()->MergeFrom(
       from._internal_bbbs());
@@ -1297,6 +1337,7 @@ void AAA::InternalSwap(AAA* PROTOBUF_RESTRICT other) {
   _impl_.ints_.InternalSwap(&other->_impl_.ints_);
   _impl_.uint64s_.InternalSwap(&other->_impl_.uint64s_);
   _impl_.floats_.InternalSwap(&other->_impl_.floats_);
+  _impl_.errors_.InternalSwap(&other->_impl_.errors_);
   _impl_.doubles_.InternalSwap(&other->_impl_.doubles_);
   _impl_.bbbs_.InternalSwap(&other->_impl_.bbbs_);
   _impl_.uint32s_.InternalSwap(&other->_impl_.uint32s_);

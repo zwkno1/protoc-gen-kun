@@ -22,7 +22,7 @@ std::string GetTypeName(const FieldDescriptor* fd)
         "class2",        // CPPTYPE_MESSAGE
     };
     if (fd->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
-        return fd->message_type()->name();
+        return google::protobuf::compiler::cpp::ClassName(fd->message_type());
     } else if (fd->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_ENUM) {
         return fd->enum_type()->name();
     }
@@ -43,13 +43,11 @@ public:
     virtual void GenerateSerialize(Printer& p) const
     {
         p.Emit(
-          R"cc(b.WritePrimitive($number$, $name$);
+          R"cc(b.template Write<$number$>($number$, $name$);
           )cc");
     }
 
-    virtual void GenerateByteSize(Printer& p) const
-    { /*p.Emit("total_size += ::ByteSize($name$);\n");*/
-    }
+    virtual void GenerateByteSize(Printer& p) const = 0;
 
     virtual void GenerateConstructor(Printer& p) const { p.Emit("$name$()\n"); }
 
@@ -84,7 +82,7 @@ public:
         p.Emit(
           R"cc(
           if ($name$ != 0) {
-              b.WriteInterger($number$, $name$);
+              b.template Write<$number$>($name$);
           }
           )cc");
     }
@@ -94,7 +92,7 @@ public:
         p.Emit(
           R"cc(
         if ($name$ != 0) {
-            total_size += ::TagSize($number$) + ::IntergerByteSize($name$);
+            total_size += ::$kun_ns$::TaggedByteSize<$number$>($name$);
         }
         )cc");
     }
@@ -120,10 +118,9 @@ public:
             },
           },
           R"cc(
-          $tmp_type$ tmp_$name$;
-          std::memcpy(&tmp_$name$, &$name$, sizeof($name$));
+          $tmp_type$ tmp_$name$ = std::bit_cast<$tmp_type$>($name$);
           if (tmp_$name$ != 0) {
-              b.WriteFixed($number$, tmp_$name$);
+              b.template Write<$number$>($name$);
           }
           )cc");
     }
@@ -138,10 +135,9 @@ public:
             },
           },
           R"cc(
-          $tmp_type$ tmp_$name$;
-          std::memcpy(&tmp_$name$, &$name$, sizeof($name$));
+          $tmp_type$ tmp_$name$ = std::bit_cast<$tmp_type$>($name$);
           if (tmp_$name$ != 0) {
-              total_size += ::TagSize($number$) + sizeof($tmp_type$);
+              total_size += ::$kun_ns$::TaggedByteSize<$number$>($name$);
           }
           )cc");
     }
@@ -160,7 +156,7 @@ public:
         p.Emit(
           R"cc(
           if (!$name$.empty()) {
-              b.WriteString($number$, $name$);
+              b.template Write<$number$>($name$);
           }
           )cc");
     }
@@ -170,8 +166,7 @@ public:
         p.Emit(
           R"cc(
           if (!$name$.empty()) {
-              uint64_t size = $name$.size();
-              total_size += ::TagSize($number$) + ::LengthDelimitedSize(size);
+              total_size += ::$kun_ns$::TaggedByteSize<$number$>($name$);
           }
           )cc");
     }
@@ -192,7 +187,7 @@ public:
         p.Emit(
           R"cc(
           if($name$) {
-              b.WriteMessage($number$, *$name$);
+              b.template Write<$number$>(*$name$);
           }
           )cc");
     }
@@ -202,8 +197,10 @@ public:
         p.Emit(
           R"cc(
           if($name$) {
-              uint64_t size = $name$->ByteSize();
-              total_size += ::TagSize($number$) + ::LengthDelimitedSize(size);
+              auto size = ::$kun_ns$::ByteSize(*$name$);
+              if(size != 0) {
+                  total_size += ::$kun_ns$::TagSize($number$) + ::$kun_ns$::LengthDelimitedSize(size);
+              }
           }
           )cc");
     }
@@ -222,7 +219,7 @@ public:
         p.Emit(
           R"cc(
           if ($name$ != 0) {
-              b.WriteEnum($number$, $name$);
+              b.template Write<$number$>(static_cast<uint64_t>($name$));
           }
           )cc");
     }
@@ -232,7 +229,7 @@ public:
         p.Emit(
           R"cc(
           if ($name$ != 0) {
-              total_size += ::TagSize($number$) + ::IntergerByteSize($name$);
+              total_size += ::$kun_ns$::TaggedByteSize<$number$>($name$);
           }
           )cc");
     }
@@ -253,7 +250,7 @@ public:
         p.Emit(
           R"cc(
           if (!$name$.empty()) {
-              b.WriteRepeatedInterger($number$, $name$);
+              b.template Write<$number$>($name$);
           }
           )cc");
     }
@@ -263,8 +260,7 @@ public:
         p.Emit(
           R"cc(
           if (!$name$.empty()) {
-              uint64_t size = ::RepeatIntergerByteSize($name$);
-              total_size += ::TagSize($number$) + ::LengthDelimitedSize(size);
+              total_size += ::$kun_ns$::TaggedByteSize<$number$>($name$);
           }
           )cc");
     }
@@ -285,7 +281,7 @@ public:
         p.Emit(
           R"cc(
           if (!$name$.empty()) {
-              b.WriteRepeatedFixed($number$, $name$);
+              b.template Write<$number$>($name$);
           }
           )cc");
     }
@@ -295,8 +291,7 @@ public:
         p.Emit(
           R"cc(
           if (!$name$.empty()) {
-              uint64_t size = ::RepeatedFixedByteSize($name$);
-              total_size += ::TagSize($number$) + ::LengthDelimitedSize(size);
+              total_size += ::$kun_ns$::TaggedByteSize<$number$>($name$);
           }
           )cc");
     }
@@ -316,7 +311,7 @@ public:
         p.Emit(
           R"cc(
           for (auto& entry : $name$) {
-              b.WriteString($number$, entry);
+              b.template Write<$number$>(entry);
           }
        )cc");
     }
@@ -326,8 +321,7 @@ public:
         p.Emit(
           R"cc(
           for (auto& entry : $name$) {
-              uint64_t size = entry.size();
-              total_size += ::TagSize($number$) + ::LengthDelimitedSize(size);
+              total_size += ::$kun_ns$::TaggedByteSize<$number$>(entry);
           }
        )cc");
     }
@@ -348,7 +342,7 @@ public:
         p.Emit(
           R"cc(
           for (auto& entry : $name$) {
-              b.WriteMessage($number$, entry);
+              b.template Write<$number$>($name$);
           }
        )cc");
     }
@@ -358,8 +352,7 @@ public:
         p.Emit(
           R"cc(
           for (auto& entry : $name$) {
-              uint64_t size = entry.ByteSize();
-              total_size += ::TagSize($number$) + ::LengthDelimitedSize(size);
+              total_size += ::$kun_ns$::TaggedByteSize<$number$>(entry);
           }
        )cc");
     }
@@ -379,8 +372,8 @@ public:
     {
         p.Emit(
           R"cc(
-          for (auto& entry : $name$) {
-              b.WriteEnum($number$, entry);
+          if (!$name$.empty()) {
+              b.template Write<$number$>($name$);
           }
        )cc");
     }
@@ -390,8 +383,7 @@ public:
         p.Emit(
           R"cc(
           if (!$name$.empty()) {
-              uint64_t size = ::RepeatIntergerByteSize($name$);
-              total_size += ::TagSize($number$) + ::LengthDelimitedSize(size);
+              total_size += ::$kun_ns$::TaggedByteSize<$number$>($name$);
           }
           )cc");
     }
@@ -412,20 +404,28 @@ public:
             { "value", GetTypeName(field_->message_type()->map_value()) },
           },
           R"cc(
-              std::unordered_map<$key$, $value$> $name$;
+              std::map<$key$, $value$> $name$;
           )cc");
     }
 
     void GenerateSerialize(Printer& p) const override
     {
         p.Emit(R"cc(
-        if (!$name$.empty()) {
-            b.WriteMap($number$, $name$);
+        for(auto & entry : $name$) {
+            b.template Write<$number$>(entry);
         }
         )cc");
     }
 
-    void GenerateByteSize(Printer& p) const override {}
+    void GenerateByteSize(Printer& p) const override
+    {
+        p.Emit(
+          R"cc(
+          for(auto & entry : $name$) {
+              total_size += ::$kun_ns$::TaggedByteSize<$number$>(entry);
+          }
+          )cc");
+    }
 };
 
 class OneofFieldGenerator : public FieldGeneratorBase
@@ -436,6 +436,8 @@ public:
     {
     }
     void GenerateMembers(Printer& p) const override {}
+
+    void GenerateByteSize(Printer& p) const override {}
 };
 
 std::unique_ptr<FieldGeneratorBase> MakeGenerator(const FieldDescriptor* field, const Options& options)

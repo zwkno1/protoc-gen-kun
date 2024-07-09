@@ -44,9 +44,10 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <map>
 #include <optional>
 
-#include "util.h"
+#include "kun.h"
 
 namespace mytest {
 
@@ -56,10 +57,11 @@ class AAA;
 
 class CCC;
 
-enum Error : int
+enum Error : int32_t
 {
     E1 = 0,
-    E2 = 1,
+    E2 = 2,
+    E3 = -1,
 };
 
 class BBB 
@@ -75,11 +77,11 @@ public:
     inline void Serialize(Buffer& b) const
     {
         for (auto& entry : value) {
-            b.WriteString(1, entry);
+            b.template Write<1>(entry);
         }
 
         if (!ints.empty()) {
-            b.WriteRepeatedInterger(3, ints);
+            b.template Write<3>(ints);
         }
 
     }
@@ -88,13 +90,11 @@ public:
     {
         size_t total_size = 0;
         for (auto& entry : value) {
-            uint64_t size = entry.size();
-            total_size += ::TagSize(1) + ::LengthDelimitedSize(size);
+            total_size += ::kun::TaggedByteSize<1>(entry);
         }
 
         if (!ints.empty()) {
-            uint64_t size = ::RepeatIntergerByteSize(ints);
-            total_size += ::TagSize(3) + ::LengthDelimitedSize(size);
+            total_size += ::kun::TaggedByteSize<3>(ints);
         }
 
         return total_size;
@@ -125,6 +125,7 @@ public:
       , doubles()
       , int64s()
       , uint64s()
+      , errors()
     {
     }
 
@@ -132,75 +133,77 @@ public:
     inline void Serialize(Buffer& b) const
     {
         for (auto& entry : names) {
-            b.WriteString(2, entry);
+            b.template Write<2>(entry);
         }
 
-        if (!kvs.empty()) {
-            b.WriteMap(3, kvs);
+        for(auto & entry : kvs) {
+            b.template Write<3>(entry);
         }
 
-        if (!kvs2.empty()) {
-            b.WriteMap(4, kvs2);
+        for(auto & entry : kvs2) {
+            b.template Write<4>(entry);
         }
 
         if (e != 0) {
-            b.WriteEnum(5, e);
+            b.template Write<5>(static_cast<uint64_t>(e));
         }
 
         if (!date.empty()) {
-            b.WriteString(6, date);
+            b.template Write<6>(date);
         }
 
         if (value != 0) {
-            b.WriteInterger(11, value);
+            b.template Write<11>(value);
         }
 
         if(bbb) {
-            b.WriteMessage(16, *bbb);
+            b.template Write<16>(*bbb);
         }
 
         if (!xx.empty()) {
-            b.WriteString(23, xx);
+            b.template Write<23>(xx);
         }
 
-        ::uint32_t tmp_aaa;
-        std::memcpy(&tmp_aaa, &aaa, sizeof(aaa));
+        ::uint32_t tmp_aaa = std::bit_cast<::uint32_t>(aaa);
         if (tmp_aaa != 0) {
-            b.WriteFixed(33, tmp_aaa);
+            b.template Write<33>(aaa);
         }
 
-        ::uint64_t tmp_d;
-        std::memcpy(&tmp_d, &d, sizeof(d));
+        ::uint64_t tmp_d = std::bit_cast<::uint64_t>(d);
         if (tmp_d != 0) {
-            b.WriteFixed(99, tmp_d);
+            b.template Write<99>(d);
         }
 
         if (!ints.empty()) {
-            b.WriteRepeatedInterger(331, ints);
+            b.template Write<331>(ints);
         }
 
         if (!uint64s.empty()) {
-            b.WriteRepeatedInterger(9899, uint64s);
+            b.template Write<9899>(uint64s);
         }
 
         if (!floats.empty()) {
-            b.WriteRepeatedFixed(12311, floats);
+            b.template Write<12311>(floats);
+        }
+
+        if (!errors.empty()) {
+            b.template Write<12312>(errors);
         }
 
         if (!doubles.empty()) {
-            b.WriteRepeatedFixed(22311, doubles);
+            b.template Write<22311>(doubles);
         }
 
         for (auto& entry : bbbs) {
-            b.WriteMessage(123123, entry);
+            b.template Write<123123>(bbbs);
         }
 
         if (!uint32s.empty()) {
-            b.WriteRepeatedInterger(12312312, uint32s);
+            b.template Write<12312312>(uint32s);
         }
 
         if (!int64s.empty()) {
-            b.WriteRepeatedInterger(12312364, int64s);
+            b.template Write<12312364>(int64s);
         }
 
     }
@@ -209,80 +212,80 @@ public:
     {
         size_t total_size = 0;
         if (value != 0) {
-            total_size += ::TagSize(11) + ::IntergerByteSize(value);
+            total_size += ::kun::TaggedByteSize<11>(value);
         }
 
         for (auto& entry : names) {
-            uint64_t size = entry.size();
-            total_size += ::TagSize(2) + ::LengthDelimitedSize(size);
+            total_size += ::kun::TaggedByteSize<2>(entry);
         }
 
         if (!xx.empty()) {
-            uint64_t size = xx.size();
-            total_size += ::TagSize(23) + ::LengthDelimitedSize(size);
+            total_size += ::kun::TaggedByteSize<23>(xx);
         }
 
+        for(auto & entry : kvs) {
+            total_size += ::kun::TaggedByteSize<3>(entry);
+        }
 
+        for(auto & entry : kvs2) {
+            total_size += ::kun::TaggedByteSize<4>(entry);
+        }
 
         if (e != 0) {
-            total_size += ::TagSize(5) + ::IntergerByteSize(e);
+            total_size += ::kun::TaggedByteSize<5>(e);
         }
 
         if (!date.empty()) {
-            uint64_t size = date.size();
-            total_size += ::TagSize(6) + ::LengthDelimitedSize(size);
+            total_size += ::kun::TaggedByteSize<6>(date);
         }
 
         if(bbb) {
-            uint64_t size = bbb->ByteSize();
-            total_size += ::TagSize(16) + ::LengthDelimitedSize(size);
+            auto size = ::kun::ByteSize(*bbb);
+            if(size != 0) {
+                total_size += ::kun::TagSize(16) + ::kun::LengthDelimitedSize(size);
+            }
         }
 
-        ::uint32_t tmp_aaa;
-        std::memcpy(&tmp_aaa, &aaa, sizeof(aaa));
+        ::uint32_t tmp_aaa = std::bit_cast<::uint32_t>(aaa);
         if (tmp_aaa != 0) {
-            total_size += ::TagSize(33) + sizeof(::uint32_t);
+            total_size += ::kun::TaggedByteSize<33>(aaa);
         }
 
-        ::uint64_t tmp_d;
-        std::memcpy(&tmp_d, &d, sizeof(d));
+        ::uint64_t tmp_d = std::bit_cast<::uint64_t>(d);
         if (tmp_d != 0) {
-            total_size += ::TagSize(99) + sizeof(::uint64_t);
+            total_size += ::kun::TaggedByteSize<99>(d);
         }
 
         for (auto& entry : bbbs) {
-            uint64_t size = entry.ByteSize();
-            total_size += ::TagSize(123123) + ::LengthDelimitedSize(size);
+            total_size += ::kun::TaggedByteSize<123123>(entry);
         }
 
         if (!ints.empty()) {
-            uint64_t size = ::RepeatIntergerByteSize(ints);
-            total_size += ::TagSize(331) + ::LengthDelimitedSize(size);
+            total_size += ::kun::TaggedByteSize<331>(ints);
         }
 
         if (!uint32s.empty()) {
-            uint64_t size = ::RepeatIntergerByteSize(uint32s);
-            total_size += ::TagSize(12312312) + ::LengthDelimitedSize(size);
+            total_size += ::kun::TaggedByteSize<12312312>(uint32s);
         }
 
         if (!floats.empty()) {
-            uint64_t size = ::RepeatedFixedByteSize(floats);
-            total_size += ::TagSize(12311) + ::LengthDelimitedSize(size);
+            total_size += ::kun::TaggedByteSize<12311>(floats);
         }
 
         if (!doubles.empty()) {
-            uint64_t size = ::RepeatedFixedByteSize(doubles);
-            total_size += ::TagSize(22311) + ::LengthDelimitedSize(size);
+            total_size += ::kun::TaggedByteSize<22311>(doubles);
         }
 
         if (!int64s.empty()) {
-            uint64_t size = ::RepeatIntergerByteSize(int64s);
-            total_size += ::TagSize(12312364) + ::LengthDelimitedSize(size);
+            total_size += ::kun::TaggedByteSize<12312364>(int64s);
         }
 
         if (!uint64s.empty()) {
-            uint64_t size = ::RepeatIntergerByteSize(uint64s);
-            total_size += ::TagSize(9899) + ::LengthDelimitedSize(size);
+            total_size += ::kun::TaggedByteSize<9899>(uint64s);
+        }
+
+        if (!errors.empty()) {
+            total_size += ::kun::TaggedByteSize<12312>(errors);
         }
 
         return total_size;
@@ -291,8 +294,8 @@ public:
     ::int32_t value;
     std::vector<::std::string> names;
     ::std::string xx;
-    std::unordered_map<::int32_t, ::int32_t> kvs;
-    std::unordered_map<::int32_t, BBB> kvs2;
+    std::map<::int32_t, ::int32_t> kvs;
+    std::map<::int32_t, BBB> kvs2;
     Error e;
     ::std::string date;
     std::optional<BBB> bbb;
@@ -305,6 +308,7 @@ public:
     std::vector<double> doubles;
     std::vector<::int64_t> int64s;
     std::vector<::uint64_t> uint64s;
+    std::vector<Error> errors;
 };
 
 class CCC 
@@ -320,11 +324,11 @@ public:
     inline void Serialize(Buffer& b) const
     {
         if (number != 0) {
-            b.WriteInterger(1, number);
+            b.template Write<1>(number);
         }
 
         if (!str.empty()) {
-            b.WriteString(2, str);
+            b.template Write<2>(str);
         }
 
     }
@@ -333,12 +337,11 @@ public:
     {
         size_t total_size = 0;
         if (number != 0) {
-            total_size += ::TagSize(1) + ::IntergerByteSize(number);
+            total_size += ::kun::TaggedByteSize<1>(number);
         }
 
         if (!str.empty()) {
-            uint64_t size = str.size();
-            total_size += ::TagSize(2) + ::LengthDelimitedSize(size);
+            total_size += ::kun::TaggedByteSize<2>(str);
         }
 
         return total_size;
@@ -349,3 +352,25 @@ public:
 };
 
 }  // namespace mytest
+namespace kun {
+template<>
+struct is_enum<::mytest::Error> : public std::true_type
+{
+};
+
+template<>
+struct is_message<::mytest::BBB> : public std::true_type
+{
+};
+
+template<>
+struct is_message<::mytest::AAA> : public std::true_type
+{
+};
+
+template<>
+struct is_message<::mytest::CCC> : public std::true_type
+{
+};
+
+}  // namespace kun

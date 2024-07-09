@@ -21,17 +21,16 @@ public:
 
     void GenerateForwardDeclare(Printer& p)
     {
-        p.Emit({ { "class", desc_->name() } },
-               R"cc(
-               class $class$;
+        auto v = p.WithVars(MakeVars());
+        p.Emit(R"cc(class $class$;
                )cc");
     }
 
     void GenerateDefine(Printer& p)
     {
+        auto v = p.WithVars(MakeVars());
         p.Emit(
           {
-            { "class", desc_->name() },
             {
               "fields",
               [&] {
@@ -55,6 +54,7 @@ public:
 
     void GenerateFunctions(Printer& p)
     {
+        auto v = p.WithVars(MakeVars());
         p.Emit(
           {
             {
@@ -118,9 +118,25 @@ public:
             )cc");
     }
 
-private:
-    void GenerateFileds(Printer& p, const Descriptor* desc) const {}
+    void GenerateHelperFunctions(Printer& p) const
+    {
+        auto v = p.WithVars(MakeVars());
+        p.Emit(R"cc(
+            template<>
+            struct is_message<$ns$::$class$> : public std::true_type
+            {
+            };
+          )cc");
+    }
 
+    std::vector<Printer::Sub> MakeVars() const
+    {
+        return {
+            { "class", google::protobuf::compiler::cpp::ClassName(desc_) },
+        };
+    }
+
+private:
     const Descriptor* desc_;
     Options options_;
     std::vector<FieldGenerator> fields_;
