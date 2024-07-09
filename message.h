@@ -40,11 +40,14 @@ public:
               },
             },
             { "funcs", [&] { GenerateFunctions(p); } },
+            { "meta", [&] { GenerateMeta(p); } },
           },
           R"cc(
           class $class$ 
           {
           public:
+              $meta$
+
               $funcs$
 
               $fields$
@@ -127,6 +130,25 @@ public:
             {
             };
           )cc");
+    }
+
+    void GenerateMeta(Printer& p) const
+    {
+        p.Emit(
+          {
+            { "field_num", fields_.size() },
+            { "field_meta",
+              [&] {
+                  for (auto& field : fields_) {
+                      field.GenerateMeta(p);
+                      p.Print("\n");
+                  }
+              } },
+          },
+          R"cc(
+          inline constexpr static std::array<::$kun_ns$::FieldMeta, $field_num$> __meta__ = {
+              $field_meta$
+          };)cc");
     }
 
     std::vector<Printer::Sub> MakeVars() const

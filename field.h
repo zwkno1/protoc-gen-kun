@@ -43,7 +43,7 @@ public:
     virtual void GenerateSerialize(Printer& p) const
     {
         p.Emit(
-          R"cc(b.template Write<$number$>($number$, $name$);
+          R"cc(b.Write(__meta__[$index$], $name$);
           )cc");
     }
 
@@ -51,12 +51,15 @@ public:
 
     virtual void GenerateConstructor(Printer& p) const { p.Emit("$name$()\n"); }
 
+    virtual void GenerateMeta(Printer& p) const { p.Emit(R"cc(::$kun_ns$::FieldMeta{ $number$, "$name$" }, )cc"); }
+
     std::vector<Printer::Sub> MakeVars()
     {
         return {
             { "name", google::protobuf::compiler::cpp::FieldName(field_) },
             { "type", GetTypeName(field_) },
             { "number", field_->number() },
+            { "index", field_->index() },
         };
     }
 
@@ -82,7 +85,7 @@ public:
         p.Emit(
           R"cc(
           if ($name$ != 0) {
-              b.template Write<$number$>($name$);
+              b.Write(__meta__[$index$], $name$);
           }
           )cc");
     }
@@ -92,7 +95,7 @@ public:
         p.Emit(
           R"cc(
         if ($name$ != 0) {
-            total_size += ::$kun_ns$::TaggedByteSize<$number$>($name$);
+            total_size += ::$kun_ns$::ByteSize<$number$>($name$);
         }
         )cc");
     }
@@ -120,7 +123,7 @@ public:
           R"cc(
           $tmp_type$ tmp_$name$ = std::bit_cast<$tmp_type$>($name$);
           if (tmp_$name$ != 0) {
-              b.template Write<$number$>($name$);
+              b.Write(__meta__[$index$], $name$);
           }
           )cc");
     }
@@ -137,7 +140,7 @@ public:
           R"cc(
           $tmp_type$ tmp_$name$ = std::bit_cast<$tmp_type$>($name$);
           if (tmp_$name$ != 0) {
-              total_size += ::$kun_ns$::TaggedByteSize<$number$>($name$);
+              total_size += ::$kun_ns$::ByteSize<$number$>($name$);
           }
           )cc");
     }
@@ -156,7 +159,7 @@ public:
         p.Emit(
           R"cc(
           if (!$name$.empty()) {
-              b.template Write<$number$>($name$);
+              b.Write(__meta__[$index$], $name$);
           }
           )cc");
     }
@@ -166,7 +169,7 @@ public:
         p.Emit(
           R"cc(
           if (!$name$.empty()) {
-              total_size += ::$kun_ns$::TaggedByteSize<$number$>($name$);
+              total_size += ::$kun_ns$::ByteSize<$number$>($name$);
           }
           )cc");
     }
@@ -187,7 +190,7 @@ public:
         p.Emit(
           R"cc(
           if($name$) {
-              b.template Write<$number$>(*$name$);
+              b.Write(__meta__[$index$], *$name$);
           }
           )cc");
     }
@@ -197,10 +200,7 @@ public:
         p.Emit(
           R"cc(
           if($name$) {
-              auto size = ::$kun_ns$::ByteSize(*$name$);
-              if(size != 0) {
-                  total_size += ::$kun_ns$::TagSize($number$) + ::$kun_ns$::LengthDelimitedSize(size);
-              }
+              total_size += ::$kun_ns$::ByteSize<$number$>(*$name$);
           }
           )cc");
     }
@@ -219,7 +219,7 @@ public:
         p.Emit(
           R"cc(
           if ($name$ != 0) {
-              b.template Write<$number$>(static_cast<uint64_t>($name$));
+              b.Write(__meta__[$index$], static_cast<uint64_t>($name$));
           }
           )cc");
     }
@@ -229,7 +229,7 @@ public:
         p.Emit(
           R"cc(
           if ($name$ != 0) {
-              total_size += ::$kun_ns$::TaggedByteSize<$number$>($name$);
+              total_size += ::$kun_ns$::ByteSize<$number$>($name$);
           }
           )cc");
     }
@@ -245,24 +245,11 @@ public:
 
     void GenerateMembers(Printer& p) const override { p.Emit("std::vector<$type$> $name$;\n"); }
 
-    void GenerateSerialize(Printer& p) const override
-    {
-        p.Emit(
-          R"cc(
-          if (!$name$.empty()) {
-              b.template Write<$number$>($name$);
-          }
-          )cc");
-    }
+    void GenerateSerialize(Printer& p) const override { p.Emit(R"cc(b.Write(__meta__[$index$], $name$);)cc"); }
 
     void GenerateByteSize(Printer& p) const override
     {
-        p.Emit(
-          R"cc(
-          if (!$name$.empty()) {
-              total_size += ::$kun_ns$::TaggedByteSize<$number$>($name$);
-          }
-          )cc");
+        p.Emit(R"cc(total_size += ::$kun_ns$::ByteSize<$number$>($name$);)cc");
     }
 };
 
@@ -276,24 +263,11 @@ public:
 
     void GenerateMembers(Printer& p) const override { p.Emit("std::vector<$type$> $name$;\n"); }
 
-    void GenerateSerialize(Printer& p) const override
-    {
-        p.Emit(
-          R"cc(
-          if (!$name$.empty()) {
-              b.template Write<$number$>($name$);
-          }
-          )cc");
-    }
+    void GenerateSerialize(Printer& p) const override { p.Emit(R"cc(b.Write(__meta__[$index$], $name$);)cc"); }
 
     void GenerateByteSize(Printer& p) const override
     {
-        p.Emit(
-          R"cc(
-          if (!$name$.empty()) {
-              total_size += ::$kun_ns$::TaggedByteSize<$number$>($name$);
-          }
-          )cc");
+        p.Emit(R"cc(total_size += ::$kun_ns$::ByteSize<$number$>($name$);)cc");
     }
 };
 
@@ -306,24 +280,11 @@ public:
     }
     void GenerateMembers(Printer& p) const override { p.Emit("std::vector<$type$> $name$;\n"); }
 
-    void GenerateSerialize(Printer& p) const override
-    {
-        p.Emit(
-          R"cc(
-          for (auto& entry : $name$) {
-              b.template Write<$number$>(entry);
-          }
-       )cc");
-    }
+    void GenerateSerialize(Printer& p) const override { p.Emit(R"cc(b.Write(__meta__[$index$], $name$);)cc"); }
 
     void GenerateByteSize(Printer& p) const override
     {
-        p.Emit(
-          R"cc(
-          for (auto& entry : $name$) {
-              total_size += ::$kun_ns$::TaggedByteSize<$number$>(entry);
-          }
-       )cc");
+        p.Emit(R"cc(total_size += ::$kun_ns$::ByteSize<$number$>($name$);)cc");
     }
 };
 
@@ -337,24 +298,11 @@ public:
 
     void GenerateMembers(Printer& p) const override { p.Emit("std::vector<$type$> $name$;\n"); }
 
-    void GenerateSerialize(Printer& p) const override
-    {
-        p.Emit(
-          R"cc(
-          for (auto& entry : $name$) {
-              b.template Write<$number$>($name$);
-          }
-       )cc");
-    }
+    void GenerateSerialize(Printer& p) const override { p.Emit(R"cc(b.Write(__meta__[$index$], $name$);)cc"); }
 
     void GenerateByteSize(Printer& p) const override
     {
-        p.Emit(
-          R"cc(
-          for (auto& entry : $name$) {
-              total_size += ::$kun_ns$::TaggedByteSize<$number$>(entry);
-          }
-       )cc");
+        p.Emit(R"cc(total_size += ::$kun_ns$::ByteSize<$number$>($name$);)cc");
     }
 };
 
@@ -368,24 +316,11 @@ public:
 
     void GenerateMembers(Printer& p) const override { p.Emit("std::vector<$type$> $name$;\n"); }
 
-    void GenerateSerialize(Printer& p) const override
-    {
-        p.Emit(
-          R"cc(
-          if (!$name$.empty()) {
-              b.template Write<$number$>($name$);
-          }
-       )cc");
-    }
+    void GenerateSerialize(Printer& p) const override { p.Emit(R"cc(b.Write(__meta__[$index$], $name$);)cc"); }
 
     void GenerateByteSize(Printer& p) const override
     {
-        p.Emit(
-          R"cc(
-          if (!$name$.empty()) {
-              total_size += ::$kun_ns$::TaggedByteSize<$number$>($name$);
-          }
-          )cc");
+        p.Emit(R"cc(total_size += ::$kun_ns$::ByteSize<$number$>($name$);)cc");
     }
 };
 
@@ -404,27 +339,15 @@ public:
             { "value", GetTypeName(field_->message_type()->map_value()) },
           },
           R"cc(
-              std::map<$key$, $value$> $name$;
+              std::unordered_map<$key$, $value$> $name$;
           )cc");
     }
 
-    void GenerateSerialize(Printer& p) const override
-    {
-        p.Emit(R"cc(
-        for(auto & entry : $name$) {
-            b.template Write<$number$>(entry);
-        }
-        )cc");
-    }
+    void GenerateSerialize(Printer& p) const override { p.Emit(R"cc(b.Write(__meta__[$index$], $name$);)cc"); }
 
     void GenerateByteSize(Printer& p) const override
     {
-        p.Emit(
-          R"cc(
-          for(auto & entry : $name$) {
-              total_size += ::$kun_ns$::TaggedByteSize<$number$>(entry);
-          }
-          )cc");
+        p.Emit(R"cc(total_size += ::$kun_ns$::ByteSize<$number$>($name$);)cc");
     }
 };
 
@@ -508,6 +431,12 @@ public:
     {
         auto v = p.WithVars(impl_->MakeVars());
         impl_->GenerateByteSize(p);
+    }
+
+    void GenerateMeta(Printer& p) const
+    {
+        auto v = p.WithVars(impl_->MakeVars());
+        impl_->GenerateMeta(p);
     }
 
     std::unique_ptr<FieldGeneratorBase> impl_;

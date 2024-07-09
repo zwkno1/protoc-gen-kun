@@ -22,19 +22,18 @@ class Buffer
 {
     enum WireType : uint32_t
     {
-        WIRETYPE_VARINT = 0,
-        WIRETYPE_FIXED64 = 1,
-        WIRETYPE_LENGTH_DELIMITED = 2,
-        WIRETYPE_START_GROUP = 3,
-        WIRETYPE_END_GROUP = 4,
-        WIRETYPE_FIXED32 = 5,
+        WIRE_VARINT = 0,
+        WIRE_FIXED64 = 1,
+        WIRE_LENGTH_DELIM = 2,
+        // WIRE_START_GROUP = 3,
+        // WIRE_END_GROUP = 4,
+        WIRE_FIXED32 = 5,
     };
 
 public:
     Buffer()
-      : data_(nullptr)
-      , ptr_(nullptr)
-      , capacity_(0)
+      : data_()
+      , ptr_(reinterpret_cast<uint8_t*>(data_.data()))
     {
     }
 
@@ -42,28 +41,33 @@ public:
 
     Buffer& operator=(const Buffer&) = delete;
 
-    ~Buffer() { delete[] data_; }
+    ~Buffer() {}
 
-    template <int number, typename T>
-    void Write(const T& value)
+    template <typename T>
+    void Write(const FieldMeta& meta, const T& value)
     {
-        if constexpr (is_integral_v<T>) {
+        if constexpr (is_integral_v<T> || is_enum_v<T>) {
             EnsureSpace();
 
-            WriteTag<number, WIRETYPE_VARINT>();
+            WriteTag(meta.number, WIRE_VARINT);
             WriteVarint(Encode(value));
             return;
         } else if constexpr (is_floating_point_v<T>) {
             EnsureSpace();
 
-            WriteTag<number, WIRETYPE_FIXED64>();
+            if constexpr (sizeof(T) == 4) {
+                WriteTag(meta.number, WIRE_FIXED32);
+            } else if constexpr (sizeof(T) == 8) {
+                WriteTag(meta.number, WIRE_FIXED64);
+            }
+
             WriteRaw(&value, 1);
             return;
         } else if constexpr (is_string_v<T>) {
             uint64_t size = value.size();
-            EnsureSpace(size + 32);
+            EnsureSpace(size);
 
-            WriteLengthDelim<number>(size);
+            WriteLengthDelim(meta.number, size);
             WriteRaw(value.data(), size);
             return;
         } else if constexpr (is_message_v<T>) {
@@ -71,84 +75,100 @@ public:
             if (size == 0) {
                 return;
             }
-            EnsureSpace(size + 32);
-            WriteLengthDelim<number>(size);
+            EnsureSpace(size);
+            WriteLengthDelim(meta.number, size);
             value.Serialize(*this);
             return;
         } else if constexpr (is_repeated<T>::value) {
-            using ElementType = typename T::value_type;
-            if constexpr (is_floating_point_v<ElementType>) {
+            if (value.empty()) {
+                return;
+            }
+
+            using EntryType = typename T::value_type;
+            if constexpr (is_floating_point_v<EntryType>) {
                 size_t size = sizeof(typename T::value_type) * value.size();
-                EnsureSpace(size + 32);
-                WriteLengthDelim<number>(size);
+                EnsureSpace(size);
+                WriteLengthDelim(meta.number, size);
                 WriteRaw(value.data(), value.size());
                 return;
-            } else if constexpr (is_integral_v<ElementType> || is_enum_v<ElementType>) {
+            } else if constexpr (is_integral_v<EntryType> || is_enum_v<EntryType>) {
                 size_t size = 0;
                 for (auto& v : value) {
                     size += IntergerByteSize(Encode(v));
                 }
 
-                EnsureSpace(size + 32);
-                WriteLengthDelim<number>(size);
-                for (auto v : value) {
-                    WriteVarint(static_cast<uint64_t>(v));
+                EnsureSpace(size);
+                WriteLengthDelim(meta.number, size);
+                for (auto& v : value) {
+                    WriteVarint(Encode(v));
+                }
+                return;
+            } else if constexpr (is_string_v<EntryType>) {
+                for (auto& entry : value) {
+                    uint64_t size = entry.size();
+                    EnsureSpace(size);
+
+                    WriteLengthDelim(meta.number, size);
+                    WriteRaw(entry.data(), size);
+                }
+                return;
+            } else if constexpr (is_message_v<EntryType>) {
+                for (auto& entry : value) {
+                    auto size = entry.ByteSize();
+                    EnsureSpace(size);
+                    WriteLengthDelim(meta.number, size);
+                    entry.Serialize(*this);
                 }
                 return;
             }
-        } else if constexpr (is_map_entry_v<T>) {
-            auto size = TaggedByteSize<KeyFieldNumber>(value.first) + TaggedByteSize<ValueFieldNumber>(value.second);
-            EnsureSpace(size + 32);
-            WriteLengthDelim<number>(size);
-            Write<KeyFieldNumber>(value.first);
-            Write<ValueFieldNumber>(value.second);
+        } else if constexpr (is_map_v<T>) {
+            for (auto& entry : value) {
+                auto size = ByteSize<KeyFieldMeta.number>(entry.first) + ByteSize<ValueFieldMeta.number>(entry.second);
+                EnsureSpace(size);
+                WriteLengthDelim(meta.number, size);
+                Write(KeyFieldMeta, entry.first);
+                Write(ValueFieldMeta, entry.second);
+            }
             return;
         }
         std::unreachable();
     }
 
-    inline uint8_t* Data() const { return data_; }
-    inline size_t Size() const { return ptr_ - data_; }
+    inline std::string& Str()
+    {
+        data_.resize(Size());
+        return data_;
+    }
+
+    inline size_t Size() const { return ptr_ - reinterpret_cast<const uint8_t*>(data_.data()); }
 
 private:
-    void EnsureSpace(uint32_t size = 32)
+    static inline constexpr uint64_t MakeTag(uint64_t number, uint32_t tag) { return (number << 3) | tag; }
+
+    void EnsureSpace(uint32_t size = 0)
     {
-        auto s = ptr_ - data_;
-        if (s + size > capacity_) {
-            capacity_ = std::max<size_t>(std::max<size_t>(capacity_ * 2, 32), s + size);
-            uint8_t* data = new uint8_t[capacity_];
-            std::memcpy(data, data_, s);
-            delete[] data_;
-            data_ = data;
-            ptr_ = data_ + s;
+        size += 32;
+        auto oldSize = Size();
+        if (oldSize + size > data_.size()) {
+            data_.resize(oldSize + size);
+            ptr_ = reinterpret_cast<uint8_t*>(data_.data()) + oldSize;
         }
     }
 
-    template <uint32_t number, uint32_t tag>
-    void WriteTag()
+    inline void WriteTag(uint64_t number, uint32_t tag)
     {
-        WriteVarint((number << 3) | tag);
+        auto t = MakeTag(number, tag);
+        WriteVarint(t);
     }
 
-    void WriteSize(uint32_t value)
+    inline void WriteLengthDelim(uint64_t number, uint32_t size)
     {
-        while (value >= 0x80) {
-            *ptr_ = static_cast<uint8_t>(value | 0x80);
-            value >>= 7;
-            ++ptr_;
-        }
-        *ptr_++ = static_cast<uint8_t>(value);
-    }
-
-    template <int number>
-    void WriteLengthDelim(uint32_t size)
-    {
-        WriteTag<number, WIRETYPE_LENGTH_DELIMITED>();
-        WriteSize(size);
+        WriteTag(number, WIRE_LENGTH_DELIM);
+        WriteVarint(size);
     }
 
     template <typename T>
-    void WriteVarint(T value)
+    inline void WriteVarint(T value)
     {
         static_assert(std::is_unsigned_v<T>, "Varint serialization must be unsigned");
         while (value >= 0x80) [[unlikely]] {
@@ -176,9 +196,8 @@ private:
     }
 
 private:
-    uint8_t* data_;
+    std::string data_;
     uint8_t* ptr_;
-    size_t capacity_;
 };
 
 } // namespace kun

@@ -10,9 +10,11 @@ set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 set(CMAKE_BUILD_TYPE Release)
 
 find_package(Protobuf)
+find_package(GTest)
 find_package(absl)
 
-include_directories(./)
+include_directories(./ ${GTEST_INCLUDE_DIRS} ${CMAKE_BINARY_DIR}
+                    ${Protobuf_INCLUDE_DIRS})
 add_executable(protoc-gen-kun main.cpp)
 target_link_libraries(
   protoc-gen-kun
@@ -58,11 +60,31 @@ target_link_libraries(
   absl::variant)
 
 if(WITH_TEST)
-  add_executable(test_kun test/test_kun.cpp)
-  add_executable(test_pb test/test_pb.cpp test/a.pb.cc)
+  # set(PROTO_PATH "${CMAKE_CURRENT_SOURCE_DIR}/a.proto") file(GLOB PROTO_FILES
+  # "${PROTO_PATH}/*.proto") foreach(PROTO_FILE in ${PROTO_FILES}) string(REGEX
+  # REPLACE "[.]proto$" ".pb.cc" OUTPUT_SOURCE ${PROTO_FILE}) list(APPEND
+  # OUTPUT_SOURCES ${OUTPUT_SOURCE}) endforeach()
 
-  target_link_libraries(
-    test_pb
+  add_custom_command(
+    OUTPUT ${CMAKE_BINARY_DIR}/a.pb.cc
+    COMMAND
+      protoc --cpp_out=${CMAKE_BINARY_DIR}/ -I ${CMAKE_CURRENT_SOURCE_DIR}/test
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/a.proto
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/test/a.proto protoc-gen-kun
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/test/
+    COMMENT "generate pb")
+
+  add_custom_command(
+    OUTPUT ${CMAKE_BINARY_DIR}/b.kun.h
+    COMMAND
+      protoc --plugin=${CMAKE_BINARY_DIR}/protoc-gen-kun
+      --kun_out=${CMAKE_BINARY_DIR}/ -I ${CMAKE_CURRENT_SOURCE_DIR}/test
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/b.proto
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/test/b.proto
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/test/
+    COMMENT "generate kun")
+
+  link_libraries(
     protobuf::libprotobuf
     protobuf::libprotoc
     absl::absl_check
@@ -102,6 +124,12 @@ if(WITH_TEST)
     absl::time
     absl::type_traits
     absl::utility
-    absl::variant)
+    absl::variant
+    GTest::gtest_main)
+
+  enable_testing()
+
+  add_executable(test_serialize test/test_serialize.cpp
+                                ${CMAKE_BINARY_DIR}/a.pb.cc)
 
 endif(WITH_TEST)
