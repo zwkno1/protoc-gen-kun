@@ -7,10 +7,10 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
-set(CMAKE_BUILD_TYPE Release)
+# set(CMAKE_BUILD_TYPE Release)
+option(WITH_TESTS "enable test" ON)
 
 find_package(Protobuf)
-find_package(GTest)
 find_package(absl)
 
 include_directories(./ ${GTEST_INCLUDE_DIRS} ${CMAKE_BINARY_DIR}
@@ -60,29 +60,30 @@ target_link_libraries(
   absl::variant)
 
 if(WITH_TEST)
+  find_package(GTest)
   # set(PROTO_PATH "${CMAKE_CURRENT_SOURCE_DIR}/a.proto") file(GLOB PROTO_FILES
   # "${PROTO_PATH}/*.proto") foreach(PROTO_FILE in ${PROTO_FILES}) string(REGEX
   # REPLACE "[.]proto$" ".pb.cc" OUTPUT_SOURCE ${PROTO_FILE}) list(APPEND
   # OUTPUT_SOURCES ${OUTPUT_SOURCE}) endforeach()
-
   add_custom_command(
-    OUTPUT ${CMAKE_BINARY_DIR}/a.pb.cc
-    COMMAND
-      protoc --cpp_out=${CMAKE_BINARY_DIR}/ -I ${CMAKE_CURRENT_SOURCE_DIR}/test
-      ${CMAKE_CURRENT_SOURCE_DIR}/test/a.proto
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/test/a.proto protoc-gen-kun
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/test/
-    COMMENT "generate pb")
-
-  add_custom_command(
-    OUTPUT ${CMAKE_BINARY_DIR}/b.kun.h
+    OUTPUT ${CMAKE_BINARY_DIR}/a.kun.h
     COMMAND
       protoc --plugin=${CMAKE_BINARY_DIR}/protoc-gen-kun
       --kun_out=${CMAKE_BINARY_DIR}/ -I ${CMAKE_CURRENT_SOURCE_DIR}/test
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/a.proto
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/test/b.proto
+            ${CMAKE_BINARY_DIR}/protoc-gen-kun
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/test/
+    COMMENT "generate kun")
+
+  add_custom_command(
+    OUTPUT ${CMAKE_BINARY_DIR}/b.pb.cc
+    COMMAND
+      protoc --cpp_out=${CMAKE_BINARY_DIR}/ -I ${CMAKE_CURRENT_SOURCE_DIR}/test
       ${CMAKE_CURRENT_SOURCE_DIR}/test/b.proto
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/test/b.proto
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/test/
-    COMMENT "generate kun")
+    COMMENT "generate pb")
 
   link_libraries(
     protobuf::libprotobuf
@@ -127,9 +128,15 @@ if(WITH_TEST)
     absl::variant
     GTest::gtest_main)
 
+  include(GoogleTest)
   enable_testing()
 
-  add_executable(test_serialize test/test_serialize.cpp
-                                ${CMAKE_BINARY_DIR}/a.pb.cc)
+  add_executable(encode_test test/encode_test.cpp ${CMAKE_BINARY_DIR}/b.pb.cc
+                             ${CMAKE_BINARY_DIR}/a.kun.h)
+
+  add_executable(bench test/benchmark.cpp ${CMAKE_BINARY_DIR}/b.pb.cc
+                       ${CMAKE_BINARY_DIR}/a.kun.h)
+
+  gtest_discover_tests(encode_test)
 
 endif(WITH_TEST)

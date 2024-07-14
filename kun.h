@@ -10,7 +10,6 @@
 #include <utility>
 #include <vector>
 
-#include <_types/_uint64_t.h>
 #include <stdint.h>
 
 namespace kun {
@@ -91,19 +90,60 @@ struct is_map<std::unordered_map<K, V>> : std::true_type
 template <typename T>
 inline constexpr bool is_map_v = is_map<T>::value;
 
+// template <typename T>
+// struct is_valid
+//   : std::integral_constant<
+//       bool, std::disjunction_v<is_integral<T>, is_floating_point<T>, is_string<T>, is_message<T>, is_enum<T>>>
+//{
+//     // constexpr static bool value =
+// };
+//
+// template <typename K, typename V>
+// struct is_valid<std::unordered_map<K, V>> : std::integral_constant<bool, std::disjunction_v<is_valid<K>,
+// is_valid<V>>>
+//{
+// };
+//
+// template <typename T>
+// struct is_valid<std::vector<T>> : std::integral_constant<bool, is_valid<T>::value>
+//{
+// };
+//
+// template <typename T>
+// inline constexpr bool is_valid_v = is_valid<T>::value;
+
 struct FieldMeta
 {
     uint64_t number;
+    uint64_t tag;
     std::string_view name;
 };
 
-struct MessageMeta
+enum WireType : uint32_t
 {
-    std::vector<FieldMeta> fields;
+    WIRE_VARINT = 0,
+    WIRE_FIXED64 = 1,
+    WIRE_LENGTH_DELIM = 2,
+    WIRE_START_GROUP = 3,
+    WIRE_END_GROUP = 4,
+    WIRE_FIXED32 = 5,
 };
 
-inline static constexpr FieldMeta KeyFieldMeta = { 1, "key" };
-inline static constexpr FieldMeta ValueFieldMeta = { 2, "value" };
+template <uint64_t number, typename T>
+constexpr inline uint64_t MakeTag()
+{
+    uint32_t type;
+    if constexpr (is_integral_v<T> || is_enum_v<T>) {
+        return (number << 3) | WIRE_VARINT;
+    } else if constexpr (is_floating_point_v<T>) {
+        if constexpr (sizeof(T) == 4) {
+            return (number << 3) | WIRE_FIXED32;
+        } else {
+            return (number << 3) | WIRE_FIXED64;
+        }
+    }
+    return (number << 3) | WIRE_LENGTH_DELIM;
+}
 
 // is_integral_v<T> || is_floating_point_v<T> ||
 //   std::is_same_v<T, std::string> || is_message<T>::value ||
@@ -130,25 +170,89 @@ inline size_t LengthDelimitedSize(size_t size)
 
 template <typename T>
     requires(std::is_unsigned_v<T>)
-inline T Encode(T v)
+inline T EncodeInterger(T v)
 {
     return v;
 }
 
 template <typename T>
     requires((std::is_signed_v<T> || is_enum_v<T>))
-inline uint64_t Encode(T v)
+inline uint64_t EncodeInterger(T v)
 {
     return static_cast<uint64_t>(v);
 }
 
-// T must not be repeated message.
+template <typename K, typename V>
+struct MapEntry
+{
+    inline constexpr static std::array<FieldMeta, 2> __meta__ = {
+        FieldMeta{ 1, MakeTag<1, K>(), "key" },
+        FieldMeta{ 2, MakeTag<2, V>(), "value" },
+    };
+
+    template <typename Decoder>
+    inline bool Decode(Decoder& dec, uint64_t tag)
+    {
+        switch (tag) {
+        case __meta__[0].tag:
+            return dec.Decode(entry_.first);
+        case __meta__[1].tag:
+            return dec.Decode(entry_.second);
+        }
+        return false;
+    }
+
+    // inline size_t ByteSize() const
+    //{
+    //     ByteSize<__meta__[0].number>(entry_.first) + ByteSize<__meta__[1].number>(entry_.second);
+    // }
+
+    std::pair<K, V>& entry_;
+};
+
+template <uint64_t Number, typename T>
+inline size_t ByteSize(const T& value);
+
+template <typename K, typename V>
+struct ConstMapEntry
+{
+    inline constexpr static std::array<FieldMeta, 2> __meta__ = {
+        FieldMeta{ 1, MakeTag<1, K>(), "key" },
+        FieldMeta{ 2, MakeTag<2, V>(), "value" },
+    };
+
+    template <typename Encoder>
+    void Encode(Encoder& enc) const
+    {
+        enc.Encode(__meta__[0], entry_.first);
+        enc.Encode(__meta__[1], entry_.second);
+    }
+
+    inline size_t ByteSize() const
+    {
+        return ::kun::ByteSize<__meta__[0].number>(entry_.first) + ::kun::ByteSize<__meta__[1].number>(entry_.second);
+    }
+
+    const std::pair<const K, V>& entry_;
+};
+
+template <typename K, typename V>
+struct is_message<MapEntry<K, V>> : std::true_type
+{
+};
+
+template <typename K, typename V>
+struct is_message<ConstMapEntry<K, V>> : std::true_type
+{
+};
+
 // TODO: Check if T is valid type
-template <int Number, typename T>
+template <uint64_t Number, typename T>
+//    requires(is_valid_v<T>)
 inline size_t ByteSize(const T& value)
 {
     if constexpr (is_integral_v<T> || is_enum_v<T>) {
-        return TagSize(Number) + IntergerByteSize(Encode(value));
+        return TagSize(Number) + IntergerByteSize(EncodeInterger(value));
     } else if constexpr (is_floating_point_v<T>) {
         return TagSize(Number) + sizeof(T);
     } else if constexpr (is_string_v<T>) {
@@ -170,7 +274,7 @@ inline size_t ByteSize(const T& value)
         } else if constexpr (is_integral_v<EntryType> || is_enum_v<EntryType>) {
             size_t size = 0;
             for (auto& v : value) {
-                size += IntergerByteSize(Encode(v));
+                size += IntergerByteSize(EncodeInterger(v));
             }
             return TagSize(Number) + LengthDelimitedSize(size);
         } else if constexpr (is_string_v<EntryType>) {
@@ -187,10 +291,12 @@ inline size_t ByteSize(const T& value)
             return size;
         }
     } else if constexpr (is_map_v<T>) {
-        // std::cout << "map" << std::endl;
+        using KeyType = typename T::key_type;
+        using ValueType = typename T::mapped_type;
         size_t size = 0;
         for (auto& entry : value) {
-            auto entrySize = ByteSize<KeyFieldMeta.number>(entry.first) + ByteSize<KeyFieldMeta.number>(entry.second);
+            ConstMapEntry<KeyType, ValueType> e{ entry };
+            auto entrySize = e.ByteSize();
             size += TagSize(Number) + LengthDelimitedSize(entrySize);
         }
         return size;

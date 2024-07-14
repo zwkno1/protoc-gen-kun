@@ -6,6 +6,8 @@
 
 #include <protobuf.h>
 
+#include "kun.h"
+
 std::string GetTypeName(const FieldDescriptor* fd)
 {
     static const std::string typenames[] = {
@@ -35,32 +37,48 @@ public:
     FieldGeneratorBase(const FieldDescriptor* field, const Options& options)
       : field_(field)
       , options_(options)
+      , tag_((field->number() << 3) | kun::WIRE_LENGTH_DELIM)
     {
     }
 
+    const FieldDescriptor* Field() const { return field_; }
+
+    virtual void GenerateTemplate(Printer& p, const std::string& tp) const { p.Emit(tp); }
+
     virtual void GenerateMembers(Printer& p) const { p.Emit("$type$ $name$;\n"); }
 
-    virtual void GenerateSerialize(Printer& p) const
+    virtual void GenerateEncode(Printer& p) const
     {
-        p.Emit(
-          R"cc(b.Write(__meta__[$index$], $name$);
-          )cc");
+        p.Emit(R"cc(
+        enc.Encode(__meta__[$meta_index$], $name$);
+        )cc");
+    }
+
+    virtual void GenerateDecode(Printer& p) const
+    {
+        p.Emit(R"cc(
+        case __meta__[$meta_index$].tag: {
+            return dec.Decode($name$);
+        }
+        )cc");
     }
 
     virtual void GenerateByteSize(Printer& p) const = 0;
 
     virtual void GenerateConstructor(Printer& p) const { p.Emit("$name$()\n"); }
 
-    virtual void GenerateMeta(Printer& p) const { p.Emit(R"cc(::$kun_ns$::FieldMeta{ $number$, "$name$" }, )cc"); }
-
-    std::vector<Printer::Sub> MakeVars()
+    virtual void GenerateMeta(Printer& p) const
     {
-        return {
-            { "name", google::protobuf::compiler::cpp::FieldName(field_) },
-            { "type", GetTypeName(field_) },
-            { "number", field_->number() },
-            { "index", field_->index() },
-        };
+        p.Emit(R"cc(::$kun_ns$::FieldMeta{ $number$, $tag$, "$name$" }, )cc");
+    }
+
+    std::vector<Printer::Sub> MakeVars() const
+    {
+        return { { "name", google::protobuf::compiler::cpp::FieldName(field_) },
+                 { "type", GetTypeName(field_) },
+                 { "number", field_->number() },
+                 { "index", field_->index() },
+                 { "tag", tag_ } };
     }
 
     virtual ~FieldGeneratorBase(){};
@@ -68,6 +86,8 @@ public:
 protected:
     const FieldDescriptor* field_;
     const Options& options_;
+
+    uint64_t tag_;
 };
 
 class IntergerFieldGenerator : public FieldGeneratorBase
@@ -76,16 +96,17 @@ public:
     IntergerFieldGenerator(const FieldDescriptor* field, const Options& options)
       : FieldGeneratorBase(field, options)
     {
+        tag_ = (field->number() << 3) | kun::WIRE_VARINT;
     }
 
     void GenerateConstructor(Printer& p) const override { p.Emit("$name$(0)\n"); }
 
-    void GenerateSerialize(Printer& p) const override
+    void GenerateEncode(Printer& p) const override
     {
         p.Emit(
           R"cc(
           if ($name$ != 0) {
-              b.Write(__meta__[$index$], $name$);
+              enc.Encode(__meta__[$meta_index$], $name$);
           }
           )cc");
     }
@@ -107,23 +128,21 @@ public:
     FixedFieldGenerator(const FieldDescriptor* field, const Options& options)
       : FieldGeneratorBase(field, options)
     {
+        if (field->cpp_type() == FieldDescriptor::CPPTYPE_FLOAT) {
+            tag_ = (field->number() << 3) | kun::WIRE_FIXED32;
+        } else {
+            tag_ = (field->number() << 3) | kun::WIRE_FIXED64;
+        }
     }
 
     void GenerateConstructor(Printer& p) const override { p.Emit("$name$(0)\n"); }
 
-    void GenerateSerialize(Printer& p) const override
+    void GenerateEncode(Printer& p) const override
     {
         p.Emit(
-          {
-            {
-              "tmp_type",
-              [&] { return field_->cpp_type() == FieldDescriptor::CPPTYPE_DOUBLE ? "::uint64_t" : "::uint32_t"; }(),
-            },
-          },
           R"cc(
-          $tmp_type$ tmp_$name$ = std::bit_cast<$tmp_type$>($name$);
-          if (tmp_$name$ != 0) {
-              b.Write(__meta__[$index$], $name$);
+          if (std::bit_cast<std::conditional_t<sizeof($name$) == sizeof(::uint32_t), ::uint32_t, ::uint64_t>>($name$) != 0) {
+              enc.Encode(__meta__[$meta_index$], $name$);
           }
           )cc");
     }
@@ -131,15 +150,8 @@ public:
     void GenerateByteSize(Printer& p) const override
     {
         p.Emit(
-          {
-            {
-              "tmp_type",
-              [&] { return field_->cpp_type() == FieldDescriptor::CPPTYPE_DOUBLE ? "::uint64_t" : "::uint32_t"; }(),
-            },
-          },
           R"cc(
-          $tmp_type$ tmp_$name$ = std::bit_cast<$tmp_type$>($name$);
-          if (tmp_$name$ != 0) {
+          if (std::bit_cast<std::conditional_t<sizeof($name$) == sizeof(::uint32_t), ::uint32_t, ::uint64_t>>($name$) != 0) {
               total_size += ::$kun_ns$::ByteSize<$number$>($name$);
           }
           )cc");
@@ -154,12 +166,12 @@ public:
     {
     }
 
-    void GenerateSerialize(Printer& p) const override
+    void GenerateEncode(Printer& p) const override
     {
         p.Emit(
           R"cc(
           if (!$name$.empty()) {
-              b.Write(__meta__[$index$], $name$);
+              enc.Encode(__meta__[$meta_index$], $name$);
           }
           )cc");
     }
@@ -185,12 +197,12 @@ public:
 
     void GenerateMembers(Printer& p) const override { p.Emit("std::optional<$type$> $name$;\n"); }
 
-    void GenerateSerialize(Printer& p) const override
+    void GenerateEncode(Printer& p) const override
     {
         p.Emit(
           R"cc(
           if($name$) {
-              b.Write(__meta__[$index$], *$name$);
+              enc.Encode(__meta__[$meta_index$], *$name$);
           }
           )cc");
     }
@@ -204,6 +216,16 @@ public:
           }
           )cc");
     }
+
+    void GenerateDecode(Printer& p) const override
+    {
+        p.Emit(R"cc(
+        case __meta__[$meta_index$].tag: {
+            $name$.emplace();
+            return dec.Decode(*$name$);
+        }
+        )cc");
+    }
 };
 
 class EnumFieldGenerator : public FieldGeneratorBase
@@ -212,14 +234,15 @@ public:
     EnumFieldGenerator(const FieldDescriptor* field, const Options& options)
       : FieldGeneratorBase(field, options)
     {
+        tag_ = (field->number() << 3) | kun::WIRE_VARINT;
     }
 
-    void GenerateSerialize(Printer& p) const override
+    void GenerateEncode(Printer& p) const override
     {
         p.Emit(
           R"cc(
           if ($name$ != 0) {
-              b.Write(__meta__[$index$], static_cast<uint64_t>($name$));
+              enc.Encode(__meta__[$meta_index$], static_cast<uint64_t>($name$));
           }
           )cc");
     }
@@ -245,8 +268,6 @@ public:
 
     void GenerateMembers(Printer& p) const override { p.Emit("std::vector<$type$> $name$;\n"); }
 
-    void GenerateSerialize(Printer& p) const override { p.Emit(R"cc(b.Write(__meta__[$index$], $name$);)cc"); }
-
     void GenerateByteSize(Printer& p) const override
     {
         p.Emit(R"cc(total_size += ::$kun_ns$::ByteSize<$number$>($name$);)cc");
@@ -263,8 +284,6 @@ public:
 
     void GenerateMembers(Printer& p) const override { p.Emit("std::vector<$type$> $name$;\n"); }
 
-    void GenerateSerialize(Printer& p) const override { p.Emit(R"cc(b.Write(__meta__[$index$], $name$);)cc"); }
-
     void GenerateByteSize(Printer& p) const override
     {
         p.Emit(R"cc(total_size += ::$kun_ns$::ByteSize<$number$>($name$);)cc");
@@ -280,11 +299,23 @@ public:
     }
     void GenerateMembers(Printer& p) const override { p.Emit("std::vector<$type$> $name$;\n"); }
 
-    void GenerateSerialize(Printer& p) const override { p.Emit(R"cc(b.Write(__meta__[$index$], $name$);)cc"); }
-
     void GenerateByteSize(Printer& p) const override
     {
         p.Emit(R"cc(total_size += ::$kun_ns$::ByteSize<$number$>($name$);)cc");
+    }
+
+    void GenerateDecode(Printer& p) const override
+    {
+        p.Emit(R"cc(
+        case __meta__[$meta_index$].tag: {
+            $type$ e;
+            if (!dec.Decode(e)) {
+                return false;
+            }
+            $name$.push_back(std::move(e));
+            return true;
+        }
+        )cc");
     }
 };
 
@@ -298,11 +329,23 @@ public:
 
     void GenerateMembers(Printer& p) const override { p.Emit("std::vector<$type$> $name$;\n"); }
 
-    void GenerateSerialize(Printer& p) const override { p.Emit(R"cc(b.Write(__meta__[$index$], $name$);)cc"); }
-
     void GenerateByteSize(Printer& p) const override
     {
         p.Emit(R"cc(total_size += ::$kun_ns$::ByteSize<$number$>($name$);)cc");
+    }
+
+    void GenerateDecode(Printer& p) const override
+    {
+        p.Emit(R"cc(
+        case __meta__[$meta_index$].tag: {
+            $type$ e;
+            if (!dec.Decode(e)) {
+                return false;
+            }
+            $name$.push_back(std::move(e));
+            return true;
+        }
+        )cc");
     }
 };
 
@@ -315,8 +358,6 @@ public:
     }
 
     void GenerateMembers(Printer& p) const override { p.Emit("std::vector<$type$> $name$;\n"); }
-
-    void GenerateSerialize(Printer& p) const override { p.Emit(R"cc(b.Write(__meta__[$index$], $name$);)cc"); }
 
     void GenerateByteSize(Printer& p) const override
     {
@@ -342,8 +383,6 @@ public:
               std::unordered_map<$key$, $value$> $name$;
           )cc");
     }
-
-    void GenerateSerialize(Printer& p) const override { p.Emit(R"cc(b.Write(__meta__[$index$], $name$);)cc"); }
 
     void GenerateByteSize(Printer& p) const override
     {
@@ -411,33 +450,47 @@ public:
 
     void GenerateMembers(Printer& p) const
     {
-        auto v = p.WithVars(impl_->MakeVars());
+        auto v = p.WithVars(MakeVars());
         impl_->GenerateMembers(p);
     }
 
-    void GenerateSerialize(Printer& p) const
+    void GenerateEncode(Printer& p) const
     {
-        auto v = p.WithVars(impl_->MakeVars());
-        impl_->GenerateSerialize(p);
+        auto v = p.WithVars(MakeVars());
+        impl_->GenerateEncode(p);
+    }
+
+    void GenerateDecode(Printer& p) const
+    {
+        auto v = p.WithVars(MakeVars());
+        impl_->GenerateDecode(p);
     }
 
     void GenerateConstructor(Printer& p) const
     {
-        auto v = p.WithVars(impl_->MakeVars());
+        auto v = p.WithVars(MakeVars());
         impl_->GenerateConstructor(p);
     }
 
     void GenerateByteSize(Printer& p) const
     {
-        auto v = p.WithVars(impl_->MakeVars());
+        auto v = p.WithVars(MakeVars());
         impl_->GenerateByteSize(p);
     }
 
     void GenerateMeta(Printer& p) const
     {
-        auto v = p.WithVars(impl_->MakeVars());
+        auto v = p.WithVars(MakeVars());
         impl_->GenerateMeta(p);
     }
+
+    void GenerateTemplate(Printer& p, const std::string& tp) const
+    {
+        auto v = p.WithVars(MakeVars());
+        impl_->GenerateTemplate(p, tp);
+    }
+
+    std::vector<Printer::Sub> MakeVars() const { return impl_->MakeVars(); }
 
     std::unique_ptr<FieldGeneratorBase> impl_;
 };

@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package pbtest;
+package kuntest;
 
 message BBB
 {
@@ -10,25 +10,36 @@ message BBB
 
 message AAA
 {
-    int32 value = 11;
-    repeated string names = 2;
-    string xx = 23;
+    message DDD
+    {
+        repeated string value = 1;
+        repeated int32 ints = 3;
+    }
+    int32 i32 = 112010;
+    uint32 u32 = 10111;
+    int64 i64 = 987112;
+    uint64 u64 = 684113;
+    float f = 35114;
+    double d = 2387115;
+    string s = 9116;
+    bytes b = 90117;
+    Error e = 2118;
+
+    repeated int32 i32s = 56210;
+    repeated uint32 u32s = 675211;
+    repeated int64 i64s = 2098712;
+    repeated uint64 u64s = 23123213;
+    repeated float fs = 123121124;
+    repeated double ds = 1321215;
+    repeated string ss = 21126;
+    repeated bytes bs = 1231217;
+    repeated Error es = 2181231;
+
     map<int32, int32> kvs = 3;
     map<int32, BBB> kvs2 = 4;
-    Error e = 5;
-    bytes date = 6;
     BBB bbb = 16;
     // CCC ccc = 8;
-    float aaa = 33;
-    double d = 99;
     repeated BBB bbbs = 123123;
-    repeated int32 ints = 331;
-    repeated uint32 uint32s = 12312312;
-    repeated float floats = 12311;
-    repeated double doubles = 22311;
-    repeated int64 int64s = 12312364;
-    repeated uint64 uint64s = 9899;
-    repeated Error errors = 12312;
 }
 
 message CCC
@@ -45,4 +56,5 @@ enum Error
     E1 = 0;
     E2 = 2;
     E3 = -1;
+    E4 = -12312318;
 }

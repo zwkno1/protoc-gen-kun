@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include <memory>
 #include <ranges>
 #include <vector>
@@ -16,7 +17,11 @@ public:
         for (int i = 0; i < desc_->field_count(); i++) {
             auto field = desc_->field(i);
             fields_.push_back(FieldGenerator(field, options));
+            sortedIndex_.push_back(i);
         }
+
+        std::ranges::sort(sortedIndex_,
+                          [&](size_t x, size_t y) { return desc_->field(x)->number() < desc_->field(y)->number(); });
     }
 
     void GenerateForwardDeclare(Printer& p)
@@ -57,24 +62,27 @@ public:
 
     void GenerateFunctions(Printer& p)
     {
-        auto v = p.WithVars(MakeVars());
+        auto clean = p.WithVars(MakeVars());
         p.Emit(
           {
             {
-              "serialize_body",
+              "encode_body",
               [&] {
-                  std::vector<const FieldDescriptor*> fields;
-                  for (int i = 0; i < desc_->field_count(); i++) {
-                      fields.push_back(desc_->field(i));
+                  for (size_t i = 0; i < sortedIndex_.size(); i++) {
+                      auto clean = p.WithVars({ { "meta_index", i } });
+                      fields_[sortedIndex_[i]].GenerateEncode(p);
+                      if (i != sortedIndex_.size() - 1) {
+                          p.Print("\n");
+                      }
                   }
-
-                  std::ranges::sort(fields, [](const FieldDescriptor* x, const FieldDescriptor* y) {
-                      return x->number() < y->number();
-                  });
-
-                  for (auto& field : fields) {
-                      fields_[field->index()].GenerateSerialize(p);
-                      p.Print("\n");
+              },
+            },
+            {
+              "decode_body",
+              [&] {
+                  for (size_t i = 0; i < sortedIndex_.size(); i++) {
+                      auto clean = p.WithVars({ { "meta_index", i } });
+                      fields_[sortedIndex_[i]].GenerateDecode(p);
                   }
               },
             },
@@ -87,6 +95,61 @@ public:
                       }
                       auto& field = fields_[i];
                       field.GenerateConstructor(p);
+                  }
+              },
+            },
+            {
+              "copy_constructor_body",
+              [&] {
+                  for (size_t i = 0; i < fields_.size(); i++) {
+                      if (i != 0) {
+                          p.Print(", ");
+                      }
+                      auto& field = fields_[i];
+                      field.GenerateTemplate(p, "$name$(other.$name$)\n");
+                  }
+              },
+            },
+            {
+              "move_constructor_body",
+              [&] {
+                  for (size_t i = 0; i < fields_.size(); i++) {
+                      if (i != 0) {
+                          p.Print(", ");
+                      }
+                      auto& field = fields_[i];
+                      field.GenerateTemplate(p, "$name$(std::move(other.$name$))\n");
+                  }
+              },
+            },
+            {
+              "assignment_body",
+              [&] {
+                  for (size_t i = 0; i < fields_.size(); i++) {
+                      auto& field = fields_[i];
+                      field.GenerateTemplate(p, "$name$ = other.$name$;\n");
+                  }
+              },
+            },
+            {
+              "move_assignment_body",
+              [&] {
+                  for (size_t i = 0; i < fields_.size(); i++) {
+                      auto& field = fields_[i];
+                      field.GenerateTemplate(p, "$name$ = std::move(other.$name$);\n");
+                  }
+              },
+            },
+            {
+              "equal_body",
+              [&] {
+                  for (size_t i = 0; i < fields_.size(); i++) {
+                      auto& field = fields_[i];
+                      field.GenerateTemplate(p, R"cc(
+                          if (!($name$ == other.$name$)) {
+                              return false;
+                          }
+                          )cc");
                   }
               },
             },
@@ -106,10 +169,48 @@ public:
             {
             }
 
-            template <typename Buffer>
-            inline void Serialize(Buffer& b) const
+            $class$(const $class$& other)
+              : $copy_constructor_body$
             {
-                $serialize_body$
+            }
+
+            $class$($class$&& other)
+              : $move_constructor_body$
+            {
+            }
+
+            $class$& operator=(const $class$& other)
+            {
+                $assignment_body$
+                return *this;
+            }
+
+            $class$& operator=($class$&& other)
+            {
+                $move_assignment_body$
+                return *this;
+            }
+
+            bool operator==(const $class$& other) const
+            {
+                $equal_body$
+                return true;
+            }
+
+            template <typename Encoder>
+            inline void Encode(Encoder& enc) const
+            {
+                $encode_body$
+            }
+
+            template <typename Decoder>
+            inline bool Decode(Decoder& dec, uint64_t tag) 
+            {
+                switch (tag) {
+                $decode_body$
+                }
+
+                return true;
             }
 
             inline size_t ByteSize() const
@@ -139,8 +240,8 @@ public:
             { "field_num", fields_.size() },
             { "field_meta",
               [&] {
-                  for (auto& field : fields_) {
-                      field.GenerateMeta(p);
+                  for (auto i : sortedIndex_) {
+                      fields_[i].GenerateMeta(p);
                       p.Print("\n");
                   }
               } },
@@ -162,4 +263,5 @@ private:
     const Descriptor* desc_;
     Options options_;
     std::vector<FieldGenerator> fields_;
+    std::vector<size_t> sortedIndex_;
 };
