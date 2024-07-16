@@ -22,8 +22,9 @@ message AAA
     float f = 35114;
     double d = 2387115;
     string s = 9116;
-    bytes b = 90117;
+    bytes bt = 90117;
     Error e = 2118;
+    bool b = 1;
 
     repeated int32 i32s = 56210;
     repeated uint32 u32s = 675211;
@@ -32,11 +33,12 @@ message AAA
     repeated float fs = 123121124;
     repeated double ds = 1321215;
     repeated string ss = 21126;
-    repeated bytes bs = 1231217;
+    repeated bytes bts = 1231217;
     repeated Error es = 2181231;
+    repeated bool bs = 112312;
 
     map<int32, int32> kvs = 3;
-    map<int32, BBB> kvs2 = 4;
+    map<string, BBB> kvs2 = 4;
     BBB bbb = 16;
     // CCC ccc = 8;
     repeated BBB bbbs = 123123;

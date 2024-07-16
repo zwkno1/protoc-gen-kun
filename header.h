@@ -2,7 +2,7 @@
 
 #include <protobuf.h>
 
-void GenerateHeader(Printer& p)
+void GenerateHeader(const FileDescriptor* file, Printer& p)
 {
     p.Print(R"cc(
 /***************************************************************************************************
@@ -56,4 +56,18 @@ void GenerateHeader(Printer& p)
 #include "kun.h"
 
 )cc");
+
+    for (size_t i = 0; i < file->dependency_count(); i++) {
+        auto dep = file->dependency(i);
+        std::string basename = google::protobuf::compiler::StripProto(dep->name());
+        p.Emit(
+          {
+            { "basename", basename },
+          },
+          R"cc(
+          #include "$basename$.kun.h"
+          )cc");
+
+        // std::cout << "dep: " << dep->name() << std::endl;
+    }
 }

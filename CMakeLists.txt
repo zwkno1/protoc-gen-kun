@@ -71,7 +71,7 @@ if(WITH_TEST)
       protoc --plugin=${CMAKE_BINARY_DIR}/protoc-gen-kun
       --kun_out=${CMAKE_BINARY_DIR}/ -I ${CMAKE_CURRENT_SOURCE_DIR}/test
       ${CMAKE_CURRENT_SOURCE_DIR}/test/a.proto
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/test/b.proto
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/test/a.proto
             ${CMAKE_BINARY_DIR}/protoc-gen-kun
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/test/
     COMMENT "generate kun")
@@ -131,12 +131,18 @@ if(WITH_TEST)
   include(GoogleTest)
   enable_testing()
 
-  add_executable(encode_test test/encode_test.cpp ${CMAKE_BINARY_DIR}/b.pb.cc
-                             ${CMAKE_BINARY_DIR}/a.kun.h)
-
   add_executable(bench test/benchmark.cpp ${CMAKE_BINARY_DIR}/b.pb.cc
                        ${CMAKE_BINARY_DIR}/a.kun.h)
 
-  gtest_discover_tests(encode_test)
+  add_executable(
+    encode_pb_test test/encode_pb_test.cpp ${CMAKE_BINARY_DIR}/b.pb.cc
+                   ${CMAKE_BINARY_DIR}/a.kun.h)
+
+  add_executable(
+    decode_pb_test test/decode_pb_test.cpp ${CMAKE_BINARY_DIR}/b.pb.cc
+                   ${CMAKE_BINARY_DIR}/a.kun.h)
+
+  gtest_discover_tests(encode_pb_test)
+  gtest_discover_tests(decode_pb_test)
 
 endif(WITH_TEST)

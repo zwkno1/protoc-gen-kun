@@ -1,6 +1,4 @@
 
-#include <a.kun.h>
-#include <bit>
 #include <chrono>
 #include <cstddef>
 #include <cstdlib>
@@ -8,123 +6,8 @@
 #include <random>
 #include <sstream>
 #include <string>
-#include <unordered_map>
 
-#include <codec.h>
-#include <kun.h>
-
-#include <b.pb.h>
-
-std::mt19937_64 rng(std::random_device{}());
-
-pbtest::AAA ToPb(const kuntest::AAA& a)
-{
-    // int32 i32 = 112010;
-    // uint32 u32 = 10111;
-    // int64 i64 = 987112;
-    // uint64 u64 = 684113;
-    // float f = 35114;
-    // double d = 2387115;
-    // string s = 9116;
-    // bytes b = 90117;
-    // Error e = 2118;
-
-    // repeated int32 i32s = 56210;
-    // repeated uint32 u32s = 675211;
-    // repeated int64 i64s = 2098712;
-    // repeated uint64 u64s = 23123213;
-    // repeated float fs = 123121124;
-    // repeated double ds = 1321215;
-    // repeated string ss = 21126;
-    // repeated bytes bs = 1231217;
-    // repeated Error es = 2181231;
-
-    // map<int32, int32> kvs = 3;
-    // map<int32, BBB> kvs2 = 4;
-    // BBB bbb = 16;
-    // repeated BBB bbbs = 123123;
-
-#define COPY(name) b.set_##name(a.name)
-
-#define COPY2(name)                                                                                                    \
-    do {                                                                                                               \
-        for (auto& i : a.name) {                                                                                       \
-            b.add_##name(i);                                                                                           \
-        }                                                                                                              \
-    } while (0)
-
-#define COPY3(name)                                                                                                    \
-    do {                                                                                                               \
-        for (auto& i : a.name) {                                                                                       \
-            (*b.mutable_##name())[i.first] = i.second;                                                                 \
-        }                                                                                                              \
-    } while (0)
-
-    pbtest::AAA b;
-    COPY(i32);
-    COPY(i64);
-    COPY(u32);
-    COPY(u64);
-    COPY(f);
-    COPY(d);
-    COPY(s);
-    COPY(b);
-    b.set_e(::pbtest::Error(a.e));
-
-    COPY2(i32s);
-    COPY2(u32s);
-    COPY2(i64s);
-    COPY2(u64s);
-    COPY2(fs);
-    COPY2(ds);
-    COPY2(ss);
-    COPY2(bs);
-    for (auto& i : a.es) {
-        b.add_es(::pbtest::Error(i));
-    }
-
-    COPY3(kvs);
-
-    for (auto& i : a.kvs2) {
-        pbtest::BBB bbb;
-
-        for (auto& j : i.second.ints) {
-            bbb.add_ints(j);
-        }
-
-        for (auto& j : i.second.value) {
-            bbb.add_value(j);
-        }
-
-        (*b.mutable_kvs2())[i.first] = bbb;
-    }
-
-    if (a.bbb) {
-        pbtest::BBB& bbb = *b.mutable_bbb();
-
-        for (auto& j : a.bbb->ints) {
-            bbb.add_ints(j);
-        }
-
-        for (auto& j : a.bbb->value) {
-            bbb.add_value(j);
-        }
-    }
-
-    for (auto& i : a.bbbs) {
-        pbtest::BBB& bbb = *b.add_bbbs();
-
-        for (auto& j : i.ints) {
-            bbb.add_ints(j);
-        }
-
-        for (auto& j : i.value) {
-            bbb.add_value(j);
-        }
-    }
-
-    return b;
-}
+#include "test/helper.h"
 
 int main(int argc, char* argv[])
 {
@@ -152,30 +35,30 @@ int main(int argc, char* argv[])
     }
 
     pbtest::AAA b = ToPb(a);
-
+    const int n = 100000;
     {
 
         auto start = std::chrono::steady_clock::now();
-        size_t size;
-        for (int i = 0; i < 10000; i++) {
+        size_t size = 0;
+        for (int i = 0; i < n; i++) {
             kun::Encoder enc;
             enc.Encode(a);
             size += enc.Str().size();
         }
         auto end = std::chrono::steady_clock::now();
-        std::cout << "cost: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
+        std::cout << "kun cost: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
                   << "ms, bytes: " << size << std::endl;
     }
 
     {
 
         auto start = std::chrono::steady_clock::now();
-        size_t size;
-        for (int i = 0; i < 10000; i++) {
+        size_t size = 0;
+        for (int i = 0; i < n; i++) {
             size += b.SerializeAsString().size();
         }
         auto end = std::chrono::steady_clock::now();
-        std::cout << "cost: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
+        std::cout << "pb cost: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
                   << "ms, bytes: " << size << std::endl;
     }
 

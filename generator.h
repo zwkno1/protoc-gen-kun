@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -9,6 +10,7 @@
 #include <message.h>
 
 #include "header.h"
+#include "protobuf.h"
 
 class Generator : public google::protobuf::compiler::CodeGenerator
 {
@@ -23,8 +25,6 @@ public:
 
         std::unique_ptr<ZeroCopyOutputStream> output(generator_context->Open(basename + ".kun.h"));
 
-        file->package();
-
         Printer p(output.get(), Printer::Options{});
 
         auto ns = google::protobuf::compiler::cpp::Namespace(file);
@@ -33,18 +33,20 @@ public:
           { "ns", ns },
         });
 
-        GenerateHeader(p);
+        GenerateHeader(file, p);
+
+        std::vector<const EnumDescriptor*> enumDescs;
+        std::vector<const Descriptor*> messageDescs;
+        GetAllDescriptor(file, messageDescs, enumDescs);
 
         std::vector<EnumGenerator> enums;
         std::vector<MessageGenerator> messages;
 
-        for (int i = 0; i < file->enum_type_count(); i++) {
-            auto desc = file->enum_type(i);
+        for (auto desc : enumDescs) {
             enums.push_back(EnumGenerator(desc, options));
         }
 
-        for (int i = 0; i < file->message_type_count(); i++) {
-            auto desc = file->message_type(i);
+        for (auto desc : messageDescs) {
             messages.push_back(MessageGenerator(desc, options));
         }
 
@@ -85,29 +87,37 @@ public:
         return true;
     }
 
-    void GetAllMessage(const FileDescriptor* file) const
+    void GetAllDescriptor(const FileDescriptor* file, std::vector<const Descriptor*>& messages,
+                          std::vector<const EnumDescriptor*>& enums) const
     {
-        std::vector<const Descriptor*> messages;
-        std::unordered_map<std::string, const Descriptor*> n;
+
+        std::function<void(const Descriptor*)> travel;
+        travel = [&](const Descriptor* desc) {
+            if (google::protobuf::compiler::cpp::IsMapEntryMessage(desc)) {
+                return;
+            }
+
+            // std::cout << "desc: " << desc->name() << std::endl;
+
+            messages.push_back(desc);
+            for (int i = 0; i < desc->enum_type_count(); i++) {
+                // std::cout << "desc: " << desc->enum_type(i)->name() << std::endl;
+                enums.push_back(desc->enum_type(i));
+            }
+
+            for (int i = 0; i < desc->nested_type_count(); i++) {
+                auto d = desc->nested_type(i);
+                travel(d);
+            }
+        };
+
+        for (int i = 0; i < file->enum_type_count(); i++) {
+            enums.push_back(file->enum_type(i));
+        }
+
         for (int i = 0; i < file->message_type_count(); i++) {
-            auto m = file->message_type(i);
-            messages.push_back(file->message_type(i));
-        }
-
-        for (auto m : messages) {
-            GetNestedMessage(m);
-        }
-    }
-
-    void GetNestedMessage(const Descriptor* m) const
-    {
-        if (google::protobuf::compiler::cpp::IsMapEntryMessage(m)) {
-            return;
-        }
-        // std::cout << "msg: " << m->full_name() << "," << m->is_placeholder() << ", " << m.<< std::endl;
-        for (int i = 0; i < m->nested_type_count(); i++) {
-            auto nm = m->nested_type(i);
-            GetNestedMessage(nm);
+            auto desc = file->message_type(i);
+            travel(desc);
         }
     }
 

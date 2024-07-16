@@ -146,7 +146,7 @@ public:
                   for (size_t i = 0; i < fields_.size(); i++) {
                       auto& field = fields_[i];
                       field.GenerateTemplate(p, R"cc(
-                          if (!($name$ == other.$name$)) {
+                          if ($name$ != other.$name$) {
                               return false;
                           }
                           )cc");

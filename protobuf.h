@@ -19,3 +19,5 @@ using google::protobuf::FileDescriptor;
 using google::protobuf::compiler::cpp::Options;
 using google::protobuf::io::Printer;
 using google::protobuf::compiler::cpp::NamespaceOpener;
+
+using CppType = google::protobuf::FieldDescriptor::CppType;

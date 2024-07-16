@@ -20,14 +20,45 @@ std::string GetTypeName(const FieldDescriptor* fd)
         "bool",          // CPPTYPE_BOOL
         "enum",          // CPPTYPE_ENUM
         "::std::string", // CPPTYPE_STRING
-        "class2",        // CPPTYPE_MESSAGE
+        "class",         // CPPTYPE_MESSAGE
     };
-    if (fd->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
-        return google::protobuf::compiler::cpp::ClassName(fd->message_type());
-    } else if (fd->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_ENUM) {
+    if (fd->cpp_type() == CppType::CPPTYPE_MESSAGE) {
+        return google::protobuf::compiler::cpp::QualifiedClassName(fd->message_type());
+    } else if (fd->cpp_type() == CppType::CPPTYPE_ENUM) {
         return fd->enum_type()->name();
     }
     return typenames[fd->cpp_type()];
+}
+
+uint64_t MakeTag(const FieldDescriptor* desc)
+{
+    kun::WireType t = kun::WIRE_VARINT;
+    if (desc->is_repeated() || desc->is_map() || (desc->cpp_type() == CppType::CPPTYPE_MESSAGE)) {
+        t = kun::WireType::WIRE_LENGTH_DELIM;
+    } else {
+        switch (desc->cpp_type()) {
+        case CppType::CPPTYPE_INT32:
+        case CppType::CPPTYPE_INT64:
+        case CppType::CPPTYPE_UINT32:
+        case CppType::CPPTYPE_UINT64:
+        case CppType::CPPTYPE_ENUM:
+        case CppType::CPPTYPE_BOOL:
+            t = kun::WireType::WIRE_VARINT;
+            break;
+        case CppType::CPPTYPE_DOUBLE:
+            t = kun::WireType::WIRE_FIXED64;
+            break;
+        case CppType::CPPTYPE_FLOAT:
+            t = kun::WireType::WIRE_FIXED32;
+            break;
+        case CppType::CPPTYPE_STRING:
+        case CppType::CPPTYPE_MESSAGE:
+            t = kun::WireType::WIRE_LENGTH_DELIM;
+            break;
+        }
+    }
+    uint64_t tag = desc->number();
+    return (tag << 3) | t;
 }
 
 class FieldGeneratorBase
@@ -36,7 +67,6 @@ public:
     FieldGeneratorBase(const FieldDescriptor* field, const Options& options)
       : field_(field)
       , options_(options)
-      , tag_((field->number() << 3) | kun::WIRE_LENGTH_DELIM)
     {
     }
 
@@ -49,7 +79,9 @@ public:
     virtual void GenerateEncode(Printer& p) const
     {
         p.Emit(R"cc(
-        enc.Encode(__meta__[$meta_index$], $name$);
+        if (::$kun_ns$::HasValue($name$)) {
+            enc.Encode(__meta__[$meta_index$], $name$);
+        }
         )cc");
     }
 
@@ -62,7 +94,14 @@ public:
         )cc");
     }
 
-    virtual void GenerateByteSize(Printer& p) const = 0;
+    virtual void GenerateByteSize(Printer& p) const
+    {
+        p.Emit(R"cc(
+        if (::$kun_ns$::HasValue($name$)) {
+            total_size += ::$kun_ns$::ByteSizeWithTag<$tag$>($name$);
+        } 
+        )cc");
+    }
 
     virtual void GenerateConstructor(Printer& p) const { p.Emit("$name$()\n"); }
 
@@ -73,11 +112,13 @@ public:
 
     std::vector<Printer::Sub> MakeVars() const
     {
-        return { { "name", google::protobuf::compiler::cpp::FieldName(field_) },
-                 { "type", GetTypeName(field_) },
-                 { "number", field_->number() },
-                 { "index", field_->index() },
-                 { "tag", tag_ } };
+        return {
+            { "name", google::protobuf::compiler::cpp::FieldName(field_) },
+            { "type", GetTypeName(field_) },
+            { "number", field_->number() },
+            { "index", field_->index() },
+            { "tag", MakeTag(field_) },
+        };
     }
 
     virtual ~FieldGeneratorBase(){};
@@ -85,8 +126,6 @@ public:
 protected:
     const FieldDescriptor* field_;
     const Options& options_;
-
-    uint64_t tag_;
 };
 
 class IntergerFieldGenerator : public FieldGeneratorBase
@@ -95,30 +134,20 @@ public:
     IntergerFieldGenerator(const FieldDescriptor* field, const Options& options)
       : FieldGeneratorBase(field, options)
     {
-        tag_ = (field->number() << 3) | kun::WIRE_VARINT;
     }
 
     void GenerateConstructor(Printer& p) const override { p.Emit("$name$(0)\n"); }
+};
 
-    void GenerateEncode(Printer& p) const override
+class BooleanFieldGenerator : public FieldGeneratorBase
+{
+public:
+    BooleanFieldGenerator(const FieldDescriptor* field, const Options& options)
+      : FieldGeneratorBase(field, options)
     {
-        p.Emit(
-          R"cc(
-          if ($name$ != 0) {
-              enc.Encode(__meta__[$meta_index$], $name$);
-          }
-          )cc");
     }
 
-    void GenerateByteSize(Printer& p) const override
-    {
-        p.Emit(
-          R"cc(
-        if ($name$ != 0) {
-            total_size += ::$kun_ns$::ByteSize<$number$>($name$);
-        }
-        )cc");
-    }
+    void GenerateConstructor(Printer& p) const override { p.Emit("$name$(false)\n"); }
 };
 
 class FixedFieldGenerator : public FieldGeneratorBase
@@ -127,34 +156,9 @@ public:
     FixedFieldGenerator(const FieldDescriptor* field, const Options& options)
       : FieldGeneratorBase(field, options)
     {
-        if (field->cpp_type() == FieldDescriptor::CPPTYPE_FLOAT) {
-            tag_ = (field->number() << 3) | kun::WIRE_FIXED32;
-        } else {
-            tag_ = (field->number() << 3) | kun::WIRE_FIXED64;
-        }
     }
 
     void GenerateConstructor(Printer& p) const override { p.Emit("$name$(0)\n"); }
-
-    void GenerateEncode(Printer& p) const override
-    {
-        p.Emit(
-          R"cc(
-          if (std::bit_cast<std::conditional_t<sizeof($name$) == sizeof(::uint32_t), ::uint32_t, ::uint64_t>>($name$) != 0) {
-              enc.Encode(__meta__[$meta_index$], $name$);
-          }
-          )cc");
-    }
-
-    void GenerateByteSize(Printer& p) const override
-    {
-        p.Emit(
-          R"cc(
-          if (std::bit_cast<std::conditional_t<sizeof($name$) == sizeof(::uint32_t), ::uint32_t, ::uint64_t>>($name$) != 0) {
-              total_size += ::$kun_ns$::ByteSize<$number$>($name$);
-          }
-          )cc");
-    }
 };
 
 class StringFieldGenerator : public FieldGeneratorBase
@@ -163,26 +167,6 @@ public:
     StringFieldGenerator(const FieldDescriptor* field, const Options& options)
       : FieldGeneratorBase(field, options)
     {
-    }
-
-    void GenerateEncode(Printer& p) const override
-    {
-        p.Emit(
-          R"cc(
-          if (!$name$.empty()) {
-              enc.Encode(__meta__[$meta_index$], $name$);
-          }
-          )cc");
-    }
-
-    void GenerateByteSize(Printer& p) const override
-    {
-        p.Emit(
-          R"cc(
-          if (!$name$.empty()) {
-              total_size += ::$kun_ns$::ByteSize<$number$>($name$);
-          }
-          )cc");
     }
 };
 
@@ -196,22 +180,21 @@ public:
 
     void GenerateMembers(Printer& p) const override { p.Emit("std::optional<$type$> $name$;\n"); }
 
+    void GenerateByteSize(Printer& p) const override
+    {
+        p.Emit(R"cc(
+        if($name$) {
+            total_size += ::$kun_ns$::ByteSizeWithTag<$tag$>(*$name$);
+        }
+        )cc");
+    }
+
     void GenerateEncode(Printer& p) const override
     {
         p.Emit(
           R"cc(
           if($name$) {
               enc.Encode(__meta__[$meta_index$], *$name$);
-          }
-          )cc");
-    }
-
-    void GenerateByteSize(Printer& p) const override
-    {
-        p.Emit(
-          R"cc(
-          if($name$) {
-              total_size += ::$kun_ns$::ByteSize<$number$>(*$name$);
           }
           )cc");
     }
@@ -233,27 +216,6 @@ public:
     EnumFieldGenerator(const FieldDescriptor* field, const Options& options)
       : FieldGeneratorBase(field, options)
     {
-        tag_ = (field->number() << 3) | kun::WIRE_VARINT;
-    }
-
-    void GenerateEncode(Printer& p) const override
-    {
-        p.Emit(
-          R"cc(
-          if ($name$ != 0) {
-              enc.Encode(__meta__[$meta_index$], static_cast<uint64_t>($name$));
-          }
-          )cc");
-    }
-
-    void GenerateByteSize(Printer& p) const override
-    {
-        p.Emit(
-          R"cc(
-          if ($name$ != 0) {
-              total_size += ::$kun_ns$::ByteSize<$number$>($name$);
-          }
-          )cc");
     }
 };
 
@@ -266,11 +228,17 @@ public:
     }
 
     void GenerateMembers(Printer& p) const override { p.Emit("std::vector<$type$> $name$;\n"); }
+};
 
-    void GenerateByteSize(Printer& p) const override
+class RepeatedBooleanFieldGenerator : public FieldGeneratorBase
+{
+public:
+    RepeatedBooleanFieldGenerator(const FieldDescriptor* field, const Options& options)
+      : FieldGeneratorBase(field, options)
     {
-        p.Emit(R"cc(total_size += ::$kun_ns$::ByteSize<$number$>($name$);)cc");
     }
+
+    void GenerateMembers(Printer& p) const override { p.Emit("std::vector<$type$> $name$;\n"); }
 };
 
 class RepeatedFixedFieldGenerator : public FieldGeneratorBase
@@ -282,11 +250,6 @@ public:
     }
 
     void GenerateMembers(Printer& p) const override { p.Emit("std::vector<$type$> $name$;\n"); }
-
-    void GenerateByteSize(Printer& p) const override
-    {
-        p.Emit(R"cc(total_size += ::$kun_ns$::ByteSize<$number$>($name$);)cc");
-    }
 };
 
 class RepeatedStringFieldGenerator : public FieldGeneratorBase
@@ -297,11 +260,6 @@ public:
     {
     }
     void GenerateMembers(Printer& p) const override { p.Emit("std::vector<$type$> $name$;\n"); }
-
-    void GenerateByteSize(Printer& p) const override
-    {
-        p.Emit(R"cc(total_size += ::$kun_ns$::ByteSize<$number$>($name$);)cc");
-    }
 
     void GenerateDecode(Printer& p) const override
     {
@@ -328,11 +286,6 @@ public:
 
     void GenerateMembers(Printer& p) const override { p.Emit("std::vector<$type$> $name$;\n"); }
 
-    void GenerateByteSize(Printer& p) const override
-    {
-        p.Emit(R"cc(total_size += ::$kun_ns$::ByteSize<$number$>($name$);)cc");
-    }
-
     void GenerateDecode(Printer& p) const override
     {
         p.Emit(R"cc(
@@ -357,11 +310,6 @@ public:
     }
 
     void GenerateMembers(Printer& p) const override { p.Emit("std::vector<$type$> $name$;\n"); }
-
-    void GenerateByteSize(Printer& p) const override
-    {
-        p.Emit(R"cc(total_size += ::$kun_ns$::ByteSize<$number$>($name$);)cc");
-    }
 };
 
 class MapFieldGenerator : public FieldGeneratorBase
@@ -381,11 +329,6 @@ public:
           R"cc(
               std::unordered_map<$key$, $value$> $name$;
           )cc");
-    }
-
-    void GenerateByteSize(Printer& p) const override
-    {
-        p.Emit(R"cc(total_size += ::$kun_ns$::ByteSize<$number$>($name$);)cc");
     }
 };
 
@@ -409,7 +352,9 @@ std::unique_ptr<FieldGeneratorBase> MakeGenerator(const FieldDescriptor* field, 
     }
 
     if (field->is_repeated()) {
-        if (field->cpp_type() == FieldDescriptor::CPPTYPE_STRING) {
+        if (field->cpp_type() == FieldDescriptor::CPPTYPE_BOOL) {
+            return std::make_unique<RepeatedBooleanFieldGenerator>(field, options);
+        } else if (field->cpp_type() == FieldDescriptor::CPPTYPE_STRING) {
             return std::make_unique<RepeatedStringFieldGenerator>(field, options);
         } else if (field->cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE) {
             return std::make_unique<RepeatedMessageFieldGenerator>(field, options);
@@ -426,7 +371,9 @@ std::unique_ptr<FieldGeneratorBase> MakeGenerator(const FieldDescriptor* field, 
         return std::make_unique<OneofFieldGenerator>(field, options);
     }
 
-    if (field->cpp_type() == FieldDescriptor::CPPTYPE_STRING) {
+    if (field->cpp_type() == FieldDescriptor::CPPTYPE_BOOL) {
+        return std::make_unique<BooleanFieldGenerator>(field, options);
+    } else if (field->cpp_type() == FieldDescriptor::CPPTYPE_STRING) {
         return std::make_unique<StringFieldGenerator>(field, options);
     } else if (field->cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE) {
         return std::make_unique<MessageFieldGenerator>(field, options);

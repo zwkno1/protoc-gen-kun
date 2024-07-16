@@ -35,6 +35,15 @@ struct is_floating_point : std::integral_constant<bool, is_one_of<T, float, doub
 template <typename T>
 inline constexpr bool is_floating_point_v = is_floating_point<T>::value;
 
+// bool
+template <typename T>
+struct is_boolean : std::integral_constant<bool, std::is_same_v<T, bool>>
+{
+};
+
+template <typename T>
+inline constexpr bool is_boolean_v = is_boolean<T>::value;
+
 // string
 template <typename T>
 struct is_string : std::integral_constant<bool, std::is_same_v<T, std::string>>
@@ -90,27 +99,8 @@ struct is_map<std::unordered_map<K, V>> : std::true_type
 template <typename T>
 inline constexpr bool is_map_v = is_map<T>::value;
 
-// template <typename T>
-// struct is_valid
-//   : std::integral_constant<
-//       bool, std::disjunction_v<is_integral<T>, is_floating_point<T>, is_string<T>, is_message<T>, is_enum<T>>>
-//{
-//     // constexpr static bool value =
-// };
-//
-// template <typename K, typename V>
-// struct is_valid<std::unordered_map<K, V>> : std::integral_constant<bool, std::disjunction_v<is_valid<K>,
-// is_valid<V>>>
-//{
-// };
-//
-// template <typename T>
-// struct is_valid<std::vector<T>> : std::integral_constant<bool, is_valid<T>::value>
-//{
-// };
-//
-// template <typename T>
-// inline constexpr bool is_valid_v = is_valid<T>::value;
+template <typename T>
+inline constexpr bool is_primitive_v = is_integral_v<T> || is_floating_point_v<T> || is_enum_v<T> || is_boolean_v<T>;
 
 struct FieldMeta
 {
@@ -133,7 +123,7 @@ template <uint64_t number, typename T>
 constexpr inline uint64_t MakeTag()
 {
     uint32_t type;
-    if constexpr (is_integral_v<T> || is_enum_v<T>) {
+    if constexpr (is_integral_v<T> || is_enum_v<T> || is_boolean_v<T>) {
         return (number << 3) | WIRE_VARINT;
     } else if constexpr (is_floating_point_v<T>) {
         if constexpr (sizeof(T) == 4) {
@@ -157,9 +147,8 @@ inline constexpr size_t IntergerByteSize(T value)
     return static_cast<size_t>(((std::numeric_limits<uint64_t>::digits * 9 + 64) - (clz * 9)) / 64);
 }
 
-inline constexpr size_t TagSize(uint64_t number)
+inline constexpr size_t TagSize(uint64_t tag)
 {
-    uint64_t tag = number << 3;
     return IntergerByteSize(tag);
 }
 
@@ -179,6 +168,15 @@ template <typename T>
     requires((std::is_signed_v<T> || is_enum_v<T>))
 inline uint64_t EncodeInterger(T v)
 {
+    // if constexpr (is_enum_v<T>) {
+    //     // int32_t iv = v;
+    //     return (static_cast<uint32_t>(v) << 1) ^ static_cast<uint32_t>(v >> 31);
+    // } else if constexpr (sizeof(v) == 8) {
+    //     v = (static_cast<uint64_t>(v) << 1) ^ static_cast<uint64_t>(v >> 63);
+    // } else {
+    //     v = (static_cast<uint32_t>(v) << 1) ^ static_cast<uint32_t>(v >> 31);
+    // }
+
     return static_cast<uint64_t>(v);
 }
 
@@ -210,8 +208,8 @@ struct MapEntry
     std::pair<K, V>& entry_;
 };
 
-template <uint64_t Number, typename T>
-inline size_t ByteSize(const T& value);
+template <uint64_t tag, typename T>
+inline size_t ByteSizeWithTag(const T& value);
 
 template <typename K, typename V>
 struct ConstMapEntry
@@ -230,7 +228,8 @@ struct ConstMapEntry
 
     inline size_t ByteSize() const
     {
-        return ::kun::ByteSize<__meta__[0].number>(entry_.first) + ::kun::ByteSize<__meta__[1].number>(entry_.second);
+        return ::kun::ByteSizeWithTag<__meta__[0].tag>(entry_.first) +
+          ::kun::ByteSizeWithTag<__meta__[1].tag>(entry_.second);
     }
 
     const std::pair<const K, V>& entry_;
@@ -246,47 +245,81 @@ struct is_message<ConstMapEntry<K, V>> : std::true_type
 {
 };
 
-// TODO: Check if T is valid type
-template <uint64_t Number, typename T>
-//    requires(is_valid_v<T>)
+template <typename T>
+inline bool HasValue(const T& value)
+{
+    if constexpr (is_integral_v<T>) {
+        return value != 0;
+    } else if constexpr (is_boolean_v<T>) {
+        return value;
+    } else if constexpr (is_enum_v<T>) {
+        return static_cast<int32_t>(value) != 0;
+    } else if constexpr (is_floating_point_v<T>) {
+        if constexpr (sizeof(T) == 8) {
+            return std::bit_cast<uint64_t>(value) != 0;
+        } else if constexpr (sizeof(T) == 4) {
+            return std::bit_cast<uint32_t>(value) != 0;
+        }
+    } else if constexpr (is_string_v<T>) {
+        return !value.empty();
+    } else if constexpr (is_message_v<T>) {
+        return value.ByteSize() != 0;
+    } else if constexpr (is_repeated_v<T>) {
+        return !value.empty();
+    } else if constexpr (is_map_v<T>) {
+        return !value.empty();
+    }
+    std::unreachable();
+}
+
+template <typename T>
 inline size_t ByteSize(const T& value)
 {
-    if constexpr (is_integral_v<T> || is_enum_v<T>) {
-        return TagSize(Number) + IntergerByteSize(EncodeInterger(value));
+    if constexpr (is_boolean_v<T>) {
+        return 1;
+    } else if constexpr (is_integral_v<T> || is_enum_v<T>) {
+        return IntergerByteSize(EncodeInterger(value));
     } else if constexpr (is_floating_point_v<T>) {
-        return TagSize(Number) + sizeof(T);
+        return sizeof(T);
     } else if constexpr (is_string_v<T>) {
-        return TagSize(Number) + LengthDelimitedSize(value.size());
+        return value.size();
     } else if constexpr (is_message_v<T>) {
-        auto size = value.ByteSize();
-        if (size == 0) {
-            return size;
-        }
-        return TagSize(Number) + LengthDelimitedSize(size);
+        return value.ByteSize();
     } else if constexpr (is_repeated_v<T>) {
         using EntryType = typename T::value_type;
-        if (value.empty()) {
-            return 0;
-        }
-
-        if constexpr (is_floating_point_v<EntryType>) {
-            return TagSize(Number) + LengthDelimitedSize(sizeof(EntryType) * value.size());
+        if constexpr (is_boolean_v<EntryType>) {
+            return value.size();
+        } else if constexpr (is_floating_point_v<EntryType>) {
+            return sizeof(EntryType) * value.size();
         } else if constexpr (is_integral_v<EntryType> || is_enum_v<EntryType>) {
             size_t size = 0;
             for (auto& v : value) {
                 size += IntergerByteSize(EncodeInterger(v));
             }
-            return TagSize(Number) + LengthDelimitedSize(size);
-        } else if constexpr (is_string_v<EntryType>) {
-            size_t size = 0;
-            for (auto& entry : value) {
-                size += TagSize(Number) + LengthDelimitedSize(entry.size());
-            }
             return size;
-        } else if constexpr (is_message_v<EntryType>) {
+        }
+    }
+
+    std::unreachable();
+}
+
+// TODO: Check if T is valid type
+template <uint64_t tag, typename T>
+inline size_t ByteSizeWithTag(const T& value)
+{
+    if constexpr (is_primitive_v<T>) {
+        return TagSize(tag) + ByteSize(value);
+    } else if (is_string_v<T> || is_message_v<T>) {
+        return TagSize(tag) + LengthDelimitedSize(ByteSize(value));
+    } else if constexpr (is_repeated_v<T>) {
+        using EntryType = typename T::value_type;
+        if constexpr (is_primitive_v<EntryType>) {
+            auto size = ByteSize(value);
+            return TagSize(tag) + LengthDelimitedSize(size);
+        } else if constexpr (is_string_v<EntryType> || is_message_v<EntryType>) {
             size_t size = 0;
             for (auto& entry : value) {
-                size += TagSize(Number) + LengthDelimitedSize(entry.ByteSize());
+                size += TagSize(tag) + LengthDelimitedSize(ByteSize(entry));
             }
             return size;
         }
@@ -296,8 +329,7 @@ inline size_t ByteSize(const T& value)
         size_t size = 0;
         for (auto& entry : value) {
             ConstMapEntry<KeyType, ValueType> e{ entry };
-            auto entrySize = e.ByteSize();
-            size += TagSize(Number) + LengthDelimitedSize(entrySize);
+            size += TagSize(tag) + LengthDelimitedSize(ByteSize(e));
         }
         return size;
     }

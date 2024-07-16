@@ -1,20 +1,14 @@
+#pragma once
+
 #include <a.kun.h>
 #include <bit>
-#include <cstddef>
-#include <cstdlib>
-#include <limits>
 #include <random>
-#include <sstream>
-#include <string>
-#include <unordered_map>
 
 #include <codec.h>
 #include <gtest/gtest.h>
 #include <kun.h>
 
 #include <b.pb.h>
-
-std::mt19937_64 rng(std::random_device{}());
 
 void Print(const std::string& data)
 {
@@ -28,18 +22,41 @@ void Print(const std::string& data)
     std::cout << ss.str() << std::endl;
 }
 
+template <typename T>
+bool FloatEqual(T a, T b)
+{
+    if constexpr (sizeof(T) == 8) {
+        EXPECT_TRUE(std::bit_cast<uint64_t>(a) == std::bit_cast<uint64_t>(b));
+        return std::bit_cast<uint64_t>(a) == std::bit_cast<uint64_t>(b);
+    } else if constexpr (sizeof(T) == 4) {
+        EXPECT_TRUE(std::bit_cast<uint32_t>(a) == std::bit_cast<uint32_t>(b));
+        return std::bit_cast<uint32_t>(a) == std::bit_cast<uint32_t>(b);
+    }
+    return false;
+}
+
 bool operator==(const kuntest::BBB& a, const pbtest::BBB& b);
 
 template <typename T, typename U>
 bool operator==(const std::vector<T>& a, const google::protobuf::RepeatedField<U>& b)
 {
+    EXPECT_EQ(a.size(), b.size());
     if (a.size() != b.size()) {
         return false;
     }
 
     for (size_t i = 0; i < a.size(); i++) {
-        if (a[i] != b[i]) {
-            return false;
+        if constexpr (kun::is_floating_point_v<T>) {
+            return FloatEqual(a[i], b[i]);
+        } else {
+            if constexpr (kun::is_integral_v<T> || kun::is_string_v<T>) {
+                EXPECT_EQ(a[i], b[i]);
+            } else {
+                EXPECT_TRUE(a[i] == b[i]);
+            }
+            if (a[i] != b[i]) {
+                return false;
+            }
         }
     }
     return true;
@@ -48,11 +65,19 @@ bool operator==(const std::vector<T>& a, const google::protobuf::RepeatedField<U
 template <typename T, typename U>
 bool operator==(const std::vector<T>& a, const google::protobuf::RepeatedPtrField<U>& b)
 {
+    EXPECT_EQ(a.size(), b.size());
     if (a.size() != b.size()) {
         return false;
     }
 
     for (size_t i = 0; i < a.size(); i++) {
+        if constexpr (kun::is_floating_point_v<T>) {
+            return FloatEqual(a[i], b[i]);
+        } else if constexpr (kun::is_integral_v<T> || kun::is_string_v<T>) {
+            EXPECT_EQ(a[i], b[i]);
+        } else {
+            EXPECT_TRUE(a[i] == b[i]);
+        }
         if (a[i] != b[i]) {
             return false;
         }
@@ -63,6 +88,24 @@ bool operator==(const std::vector<T>& a, const google::protobuf::RepeatedPtrFiel
 bool operator==(const kuntest::BBB& a, const pbtest::BBB& b)
 {
     return (a.value == b.value()) && (a.ints == b.ints());
+}
+
+template <typename K1, typename V1, typename K2, typename V2>
+bool operator==(const std::unordered_map<K1, V1>& a, const google::protobuf::Map<K2, V2>& b)
+{
+    if (a.size() != b.size()) {
+        return false;
+    }
+    for (auto& e : b) {
+        auto iter = a.find(e.first);
+        if (iter == a.end()) {
+            return false;
+        }
+        if (iter->second != e.second) {
+            return false;
+        }
+    }
+    return true;
 }
 
 bool operator==(const kuntest::AAA& a, const pbtest::AAA& b)
@@ -76,25 +119,8 @@ bool operator==(const kuntest::AAA& a, const pbtest::AAA& b)
 
 #define CHECK2(name)                                                                                                   \
     do {                                                                                                               \
-        if (a.name != b.name())                                                                                        \
+        if (a.name != static_cast<decltype(a.name)>(b.name())) {                                                       \
             return false;                                                                                              \
-    } while (0)
-
-    // CHECKREPEATED(a.name, b.name())
-
-#define CHECK3(name)                                                                                                   \
-    do {                                                                                                               \
-        if (a.name.size() != b.name##_size()) {                                                                        \
-            return false;                                                                                              \
-        }                                                                                                              \
-        for (auto& i : b.name()) {                                                                                     \
-            auto iter = a.name.find(i.first);                                                                          \
-            if (iter == a.name.end()) {                                                                                \
-                return false;                                                                                          \
-            }                                                                                                          \
-            if (iter->second != i.second) {                                                                            \
-                return false;                                                                                          \
-            }                                                                                                          \
         }                                                                                                              \
     } while (0)
 
@@ -102,28 +128,37 @@ bool operator==(const kuntest::AAA& a, const pbtest::AAA& b)
     CHECK(i64);
     CHECK(u32);
     CHECK(u64);
-    CHECK(f);
-    CHECK(d);
+
     CHECK(s);
+    CHECK(bt);
+    CHECK2(e);
     CHECK(b);
-    CHECK(e);
 
-    CHECK2(i32s);
-    CHECK2(u32s);
-    CHECK2(i64s);
-    CHECK2(u64s);
-    CHECK2(fs);
-    CHECK2(ds);
-    CHECK2(ss);
-    CHECK2(bs);
-    CHECK2(es);
+    if (!FloatEqual(a.f, b.f())) {
+        return false;
+    }
 
-    CHECK3(kvs);
-    CHECK3(kvs2);
+    if (!FloatEqual(a.d, b.d())) {
+        return false;
+    }
 
-    CHECK2(bbbs);
+    CHECK(i32s);
+    CHECK(u32s);
+    CHECK(i64s);
+    CHECK(u64s);
+    CHECK(fs);
+    CHECK(ds);
+    CHECK(ss);
+    CHECK(bts);
+    CHECK(es);
+    CHECK(bs);
 
-    if (a.bbb.has_value() ^ b.has_bbb()) {
+    CHECK(kvs);
+    CHECK(kvs2);
+
+    CHECK(bbbs);
+
+    if (a.bbb.has_value() != b.has_bbb()) {
         return false;
     }
 
@@ -134,6 +169,40 @@ bool operator==(const kuntest::AAA& a, const pbtest::AAA& b)
     }
 
     return true;
+}
+
+void ExpectEQ(const kuntest::AAA& a, const pbtest::AAA& b)
+{
+    EXPECT_TRUE(a.i32 == b.i32());
+    EXPECT_TRUE(a.i64 == b.i64());
+    EXPECT_TRUE(a.u32 == b.u32());
+    EXPECT_TRUE(a.u64 == b.u64());
+    EXPECT_TRUE(std::bit_cast<uint32_t>(a.f) == std::bit_cast<uint32_t>(b.f()));
+    EXPECT_TRUE(std::bit_cast<uint64_t>(a.d) == std::bit_cast<uint64_t>(b.d()));
+    EXPECT_TRUE(a.s == b.s());
+    EXPECT_TRUE(a.bt == b.bt());
+    EXPECT_TRUE(a.e == kuntest::Error(b.e()));
+    EXPECT_TRUE(a.b == b.b());
+
+    EXPECT_TRUE(a.i32s == b.i32s());
+    EXPECT_TRUE(a.u32s == b.u32s());
+    EXPECT_TRUE(a.i64s == b.i64s());
+    EXPECT_TRUE(a.u64s == b.u64s());
+    EXPECT_TRUE(a.fs == b.fs());
+    EXPECT_TRUE(a.ds == b.ds());
+    EXPECT_TRUE(a.ss == b.ss());
+    EXPECT_TRUE(a.bts == b.bts());
+    EXPECT_TRUE(a.es == b.es());
+    EXPECT_TRUE(a.bs == b.bs());
+    EXPECT_TRUE(a.kvs == b.kvs());
+    EXPECT_TRUE(a.kvs2 == b.kvs2());
+
+    EXPECT_TRUE(a.bbbs == b.bbbs());
+
+    EXPECT_TRUE(a.bbb.has_value() == b.has_bbb());
+    if (a.bbb) {
+        EXPECT_TRUE(*a.bbb == b.bbb());
+    }
 }
 
 pbtest::AAA ToPb(const kuntest::AAA& a)
@@ -188,6 +257,7 @@ pbtest::AAA ToPb(const kuntest::AAA& a)
     COPY(d);
     COPY(s);
     COPY(b);
+    COPY(bt);
     b.set_e(::pbtest::Error(a.e));
 
     COPY2(i32s);
@@ -197,7 +267,12 @@ pbtest::AAA ToPb(const kuntest::AAA& a)
     COPY2(fs);
     COPY2(ds);
     COPY2(ss);
-    COPY2(bs);
+    COPY2(bts);
+
+    for (auto i : a.bs) {
+        b.add_bs(i);
+    }
+
     for (auto& i : a.es) {
         b.add_es(::pbtest::Error(i));
     }
@@ -247,120 +322,39 @@ pbtest::AAA ToPb(const kuntest::AAA& a)
     return b;
 }
 
-TEST(Encode, numeric)
+inline uint64_t rng()
 {
-    kuntest::AAA a;
-    a.i32 = rng();
-    a.u32 = rng();
-    a.i64 = rng();
-    a.u64 = rng();
-    a.e = kuntest::Error(rng());
-    a.f = std::bit_cast<float>(uint32_t(rng()));
-    a.d = std::bit_cast<double>(rng());
-
-    kun::Encoder enc;
-    enc.Encode(a);
-
-    pbtest::AAA b;
-    EXPECT_TRUE(b.ParseFromString(enc.Str()));
-
-    EXPECT_EQ(a.ByteSize(), b.ByteSizeLong());
-    EXPECT_TRUE(a == b);
+    static std::mt19937_64 r(std::random_device{}());
+    return r();
 }
 
-TEST(Decode, numeric)
+template <typename T>
+void GenRand(T& value)
 {
-    kuntest::AAA a;
-    a.i32 = rng();
-    a.u32 = rng();
-    a.i64 = rng();
-    a.u64 = rng();
-    a.e = kuntest::Error(rng());
-    a.f = std::bit_cast<float>(uint32_t(rng()));
-    a.d = std::bit_cast<double>(rng());
-
-    auto b = ToPb(a);
-    auto str = b.SerializeAsString();
-
-    kuntest::AAA c;
-
-    kun::Decoder dec(str);
-    EXPECT_TRUE(dec.Decode(c));
-
-    EXPECT_TRUE(c == b);
-}
-
-TEST(Encode, map)
-{
-    kuntest::AAA a;
-
-    for (int i = 0; i < 10; ++i) {
-        a.kvs[rng()] = rng();
-    }
-
-    kun::Encoder enc;
-    enc.Encode(a);
-
-    pbtest::AAA b;
-    EXPECT_TRUE(b.ParseFromString(enc.Str()));
-
-    EXPECT_EQ(a.kvs.size(), b.kvs_size());
-
-    for (auto& i : b.kvs()) {
-        auto iter = a.kvs.find(i.first);
-        EXPECT_TRUE(iter != a.kvs.end());
-        EXPECT_EQ(iter->second, i.second);
+    if constexpr (std::is_same_v<T, float>) {
+        value = std::bit_cast<float>(uint32_t(rng()));
+    } else if constexpr (std::is_same_v<T, double>) {
+        value = std::bit_cast<double>(rng());
+    } else if constexpr (std::is_same_v<T, bool>) {
+        value = rng() % 2;
+    } else if constexpr (kun::is_string_v<T>) {
+        value.resize(rng() % 1000);
+        for (auto& i : value) {
+            i = rng() % 128;
+        }
+    } else if constexpr (kun::is_integral_v<T>) {
+        auto v = rng();
+        value = *reinterpret_cast<T*>(&v);
     }
 }
 
-TEST(Encode, bytesize)
+template <typename T>
+void GenRandRepeated(std::vector<T>& value, size_t max = 1000)
 {
-    kuntest::AAA a;
-
-    a.i32 = 123123;
-    a.f = 123.123;
-    a.bbb = kuntest::BBB();
-    for (int i = 0; i < 3000; i++) {
-        a.ss.push_back(std::to_string(i));
-        a.i32s.push_back(i * -12352);
-        a.fs.push_back(i * 311.5);
-        a.ds.push_back(i * 3231314.7);
-        a.bbb->value.push_back(std::to_string(i * 37843));
-        a.bbb->ints.push_back(i * 123131);
-        a.es.push_back(kuntest::Error(i));
-        a.kvs[i] = i * 1001;
+    size_t size = rng() % max;
+    for (size_t i = 0; i < size; i++) {
+        T v;
+        GenRand(v);
+        value.push_back(std::move(v));
     }
-
-    pbtest::AAA b = ToPb(a);
-
-    EXPECT_EQ(a.ByteSize(), b.ByteSizeLong());
-}
-
-TEST(Decode, base)
-{
-    kuntest::AAA a;
-    a.u64 = std::numeric_limits<uint64_t>::max();
-    a.d = 123.123;
-    a.bbb = kuntest::BBB();
-    for (int i = 0; i < 300000; i++) {
-        a.ss.push_back(std::to_string(i));
-        a.i32s.push_back(i * -12352);
-        a.fs.push_back(i * 311.5);
-        a.ds.push_back(i * 3231314.7);
-        a.bbb->value.push_back(std::to_string(i * 37843));
-        a.bbb->ints.push_back(i * 123131);
-        a.es.push_back(kuntest::Error(i));
-        a.kvs[i] = i * 1001;
-    }
-
-    auto b = ToPb(a);
-
-    auto str = b.SerializeAsString();
-
-    kuntest::AAA a2;
-    kun::Decoder dec((uint8_t*)str.data(), str.size());
-
-    EXPECT_TRUE(dec.Decode(a2));
-
-    EXPECT_EQ(a, a2);
 }

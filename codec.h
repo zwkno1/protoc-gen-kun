@@ -1,6 +1,7 @@
 #pragma once
 
 #include <bit>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -38,12 +39,18 @@ public:
         auto size = value.ByteSize();
         EnsureSpace(size);
         value.Encode(*this);
+        assert(size == ptr_ - reinterpret_cast<uint8_t*>(data_.data()));
     }
 
     template <typename T>
     void Encode(const FieldMeta& meta, const T& value)
     {
-        if constexpr (is_integral_v<T> || is_enum_v<T>) {
+        if constexpr (is_boolean_v<T>) {
+            EncodeTag(meta.tag);
+            uint8_t v = value ? 1 : 0;
+            EncodeRaw(&v, 1);
+            return;
+        } else if constexpr (is_integral_v<T> || is_enum_v<T>) {
             EncodeTag(meta.tag);
             EncodeVarint(EncodeInterger(value));
             return;
@@ -59,19 +66,19 @@ public:
             return;
         } else if constexpr (is_message_v<T>) {
             auto size = value.ByteSize();
-            if (size == 0) {
-                return;
-            }
             EncodeLengthDelim(meta.tag, size);
             value.Encode(*this);
             return;
         } else if constexpr (is_repeated<T>::value) {
-            if (value.empty()) {
-                return;
-            }
-
             using EntryType = typename T::value_type;
-            if constexpr (is_floating_point_v<EntryType>) {
+            if constexpr (is_boolean_v<EntryType>) {
+                EncodeLengthDelim(meta.tag, value.size());
+                for (auto b : value) {
+                    uint8_t v = b ? 1 : 0;
+                    EncodeRaw(&v, 1);
+                }
+                return;
+            } else if constexpr (is_floating_point_v<EntryType>) {
                 size_t size = sizeof(typename T::value_type) * value.size();
                 EncodeLengthDelim(meta.tag, size);
                 EncodeRaw(value.data(), value.size());
@@ -198,7 +205,10 @@ public:
     template <typename T>
     bool Decode(T& value)
     {
-        if constexpr (is_integral_v<T>) {
+        if constexpr (is_boolean_v<T>) {
+            value = (*reinterpret_cast<const uint64_t*>(ptr_) != 0);
+            return true;
+        } else if constexpr (is_integral_v<T>) {
             if (!Convert(*reinterpret_cast<const uint64_t*>(ptr_), value)) {
                 return false;
             }
@@ -227,7 +237,12 @@ public:
             return true;
         } else if constexpr (is_repeated<T>::value) {
             using EntryType = typename T::value_type;
-            if constexpr (is_floating_point_v<EntryType>) {
+            if constexpr (is_boolean_v<EntryType>) {
+                for (; ptr_ < end_; ptr_++) {
+                    value.push_back(*ptr_ != 0);
+                }
+                return true;
+            } else if constexpr (is_floating_point_v<EntryType>) {
                 size_t size = end_ - ptr_;
                 if (size % sizeof(EntryType) != 0) {
                     return false;
