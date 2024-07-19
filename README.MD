@@ -54,6 +54,6 @@ protobuf作为一个非常牛逼的库，但其生成的代码相对复杂，需
 ### TODO
 
 后续会完善如下功能：
-1. 支持oneof，nested类型，extends，string utf-8校验。
+1. 支持oneof，extends，string utf-8校验。
 2. 支持解析和json等其他格式。
 3. 增加更多的测试。

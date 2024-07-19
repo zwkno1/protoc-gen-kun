@@ -1,1 +1,0 @@
-protoc --plugin=./protoc-gen-kun --kun_out=./ ./a.proto

@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 
 #include <protobuf.h>
 
@@ -30,29 +31,79 @@ std::string GetTypeName(const FieldDescriptor* fd)
     return typenames[fd->cpp_type()];
 }
 
+kun::CodecType GetCodecType(const FieldDescriptor* field)
+{
+    switch (field->type()) {
+    case FieldDescriptor::TYPE_FIXED32:
+    case FieldDescriptor::TYPE_FIXED64:
+    case FieldDescriptor::TYPE_SFIXED32:
+    case FieldDescriptor::TYPE_SFIXED64:
+    case FieldDescriptor::TYPE_DOUBLE:
+    case FieldDescriptor::TYPE_FLOAT:
+        return kun::CODEC_FIXED;
+    case FieldDescriptor::TYPE_SINT32:
+    case FieldDescriptor::TYPE_SINT64:
+        return kun::CODEC_ZIGZAG;
+    case FieldDescriptor::TYPE_INT32:
+    case FieldDescriptor::TYPE_INT64:
+    case FieldDescriptor::TYPE_UINT32:
+    case FieldDescriptor::TYPE_UINT64:
+    case FieldDescriptor::TYPE_ENUM:
+    case FieldDescriptor::TYPE_BOOL:
+        return kun::CODEC_VARINT;
+    case FieldDescriptor::TYPE_STRING:
+    case FieldDescriptor::TYPE_BYTES:
+    case FieldDescriptor::TYPE_GROUP:
+    case FieldDescriptor::TYPE_MESSAGE:
+    }
+    return kun::CODEC_NONE;
+}
+
+// std::string_view CodecName(kun::CodecType type)
+// {
+//     switch (type) {
+//     case kun::CODEC_FIXED:
+//         return "::kun::CODEC_FIXED";
+//     case kun::CODEC_ZIGZAG:
+//         return "::kun::CODEC_ZIGZAG";
+//     case kun::CODEC_VARINT:
+//         return "::kun::CODEC_VARINT";
+//     default:
+//     }
+//     return "::kun::CODEC_NONE";
+// }
+
 uint64_t MakeTag(const FieldDescriptor* desc)
 {
     kun::WireType t = kun::WIRE_VARINT;
     if (desc->is_repeated() || desc->is_map() || (desc->cpp_type() == CppType::CPPTYPE_MESSAGE)) {
         t = kun::WireType::WIRE_LENGTH_DELIM;
     } else {
-        switch (desc->cpp_type()) {
-        case CppType::CPPTYPE_INT32:
-        case CppType::CPPTYPE_INT64:
-        case CppType::CPPTYPE_UINT32:
-        case CppType::CPPTYPE_UINT64:
-        case CppType::CPPTYPE_ENUM:
-        case CppType::CPPTYPE_BOOL:
+        switch (desc->type()) {
+        case FieldDescriptor::TYPE_SINT32:
+        case FieldDescriptor::TYPE_SINT64:
+        case FieldDescriptor::TYPE_INT32:
+        case FieldDescriptor::TYPE_INT64:
+        case FieldDescriptor::TYPE_UINT32:
+        case FieldDescriptor::TYPE_UINT64:
+        case FieldDescriptor::TYPE_ENUM:
+        case FieldDescriptor::TYPE_BOOL:
             t = kun::WireType::WIRE_VARINT;
             break;
-        case CppType::CPPTYPE_DOUBLE:
-            t = kun::WireType::WIRE_FIXED64;
-            break;
-        case CppType::CPPTYPE_FLOAT:
+        case FieldDescriptor::TYPE_FIXED32:
+        case FieldDescriptor::TYPE_SFIXED32:
+        case FieldDescriptor::TYPE_FLOAT:
             t = kun::WireType::WIRE_FIXED32;
             break;
-        case CppType::CPPTYPE_STRING:
-        case CppType::CPPTYPE_MESSAGE:
+        case FieldDescriptor::TYPE_FIXED64:
+        case FieldDescriptor::TYPE_SFIXED64:
+        case FieldDescriptor::TYPE_DOUBLE:
+            t = kun::WireType::WIRE_FIXED64;
+            break;
+        case FieldDescriptor::TYPE_MESSAGE:
+        case FieldDescriptor::TYPE_STRING:
+        case FieldDescriptor::TYPE_BYTES:
+        case FieldDescriptor::TYPE_GROUP:
             t = kun::WireType::WIRE_LENGTH_DELIM;
             break;
         }
@@ -80,7 +131,7 @@ public:
     {
         p.Emit(R"cc(
         if (::$kun_ns$::HasValue($name$)) {
-            enc.Encode(__meta__[$meta_index$], $name$);
+            enc.template Encode<$class$, $meta_index$>($name$);
         }
         )cc");
     }
@@ -89,7 +140,7 @@ public:
     {
         p.Emit(R"cc(
         case __meta__[$meta_index$].tag: {
-            return dec.Decode($name$);
+            return dec.template Decode<$class$, $meta_index$>($name$);
         }
         )cc");
     }
@@ -98,7 +149,7 @@ public:
     {
         p.Emit(R"cc(
         if (::$kun_ns$::HasValue($name$)) {
-            total_size += ::$kun_ns$::ByteSizeWithTag<$tag$>($name$);
+            total_size += ::$kun_ns$::ByteSizeWithTag<__meta__[$meta_index$].tag, __meta__[$meta_index$].codec>($name$);
         } 
         )cc");
     }
@@ -107,17 +158,27 @@ public:
 
     virtual void GenerateMeta(Printer& p) const
     {
-        p.Emit(R"cc(::$kun_ns$::FieldMeta{ $number$, $tag$, "$name$" }, )cc");
+        p.Emit(R"cc(::$kun_ns$::FieldMeta{ $number$, $tag$, $codec$, "$name$" }, )cc");
     }
 
     std::vector<Printer::Sub> MakeVars() const
     {
+        uint32_t c = kun::CODEC_NONE;
+
+        if (field_->is_map()) {
+            c = (GetCodecType(field_->message_type()->map_key()) << 8) |
+              GetCodecType(field_->message_type()->map_value());
+        } else {
+            c = GetCodecType(field_);
+        }
+
         return {
             { "name", google::protobuf::compiler::cpp::FieldName(field_) },
             { "type", GetTypeName(field_) },
             { "number", field_->number() },
             { "index", field_->index() },
             { "tag", MakeTag(field_) },
+            { "codec", c },
         };
     }
 
@@ -150,10 +211,10 @@ public:
     void GenerateConstructor(Printer& p) const override { p.Emit("$name$(false)\n"); }
 };
 
-class FixedFieldGenerator : public FieldGeneratorBase
+class FloatingFieldGenerator : public FieldGeneratorBase
 {
 public:
-    FixedFieldGenerator(const FieldDescriptor* field, const Options& options)
+    FloatingFieldGenerator(const FieldDescriptor* field, const Options& options)
       : FieldGeneratorBase(field, options)
     {
     }
@@ -184,7 +245,7 @@ public:
     {
         p.Emit(R"cc(
         if($name$) {
-            total_size += ::$kun_ns$::ByteSizeWithTag<$tag$>(*$name$);
+            total_size += ::$kun_ns$::ByteSizeWithTag<__meta__[$meta_index$].tag, __meta__[$meta_index$].codec>(*$name$);
         }
         )cc");
     }
@@ -194,7 +255,7 @@ public:
         p.Emit(
           R"cc(
           if($name$) {
-              enc.Encode(__meta__[$meta_index$], *$name$);
+              enc.template Encode<$class$, $meta_index$>(*$name$);
           }
           )cc");
     }
@@ -241,10 +302,10 @@ public:
     void GenerateMembers(Printer& p) const override { p.Emit("std::vector<$type$> $name$;\n"); }
 };
 
-class RepeatedFixedFieldGenerator : public FieldGeneratorBase
+class RepeatedFloatingFieldGenerator : public FieldGeneratorBase
 {
 public:
-    RepeatedFixedFieldGenerator(const FieldDescriptor* field, const Options& options)
+    RepeatedFloatingFieldGenerator(const FieldDescriptor* field, const Options& options)
       : FieldGeneratorBase(field, options)
     {
     }
@@ -266,7 +327,7 @@ public:
         p.Emit(R"cc(
         case __meta__[$meta_index$].tag: {
             $type$ e;
-            if (!dec.Decode(e)) {
+            if (!dec.template Decode<$class$, $meta_index$>(e)) {
                 return false;
             }
             $name$.push_back(std::move(e));
@@ -362,7 +423,7 @@ std::unique_ptr<FieldGeneratorBase> MakeGenerator(const FieldDescriptor* field, 
             return std::make_unique<RepeatedEnumFieldGenerator>(field, options);
         } else if (field->cpp_type() == FieldDescriptor::CPPTYPE_DOUBLE ||
                    field->cpp_type() == FieldDescriptor::CPPTYPE_FLOAT) {
-            return std::make_unique<RepeatedFixedFieldGenerator>(field, options);
+            return std::make_unique<RepeatedFloatingFieldGenerator>(field, options);
         }
         return std::make_unique<RepeatedIntergerFieldGenerator>(field, options);
     }
@@ -381,7 +442,7 @@ std::unique_ptr<FieldGeneratorBase> MakeGenerator(const FieldDescriptor* field, 
         return std::make_unique<EnumFieldGenerator>(field, options);
     } else if (field->cpp_type() == FieldDescriptor::CPPTYPE_DOUBLE ||
                field->cpp_type() == FieldDescriptor::CPPTYPE_FLOAT) {
-        return std::make_unique<FixedFieldGenerator>(field, options);
+        return std::make_unique<FloatingFieldGenerator>(field, options);
     }
     return std::make_unique<IntergerFieldGenerator>(field, options);
 }

@@ -129,6 +129,13 @@ bool operator==(const kuntest::AAA& a, const pbtest::AAA& b)
     CHECK(u32);
     CHECK(u64);
 
+    CHECK(s32);
+    CHECK(s64);
+    CHECK(sf32);
+    CHECK(sf64);
+    CHECK(f32);
+    CHECK(f64);
+
     CHECK(s);
     CHECK(bt);
     CHECK2(e);
@@ -153,6 +160,13 @@ bool operator==(const kuntest::AAA& a, const pbtest::AAA& b)
     CHECK(es);
     CHECK(bs);
 
+    CHECK(s32s);
+    CHECK(s64s);
+    CHECK(sf32s);
+    CHECK(sf64s);
+    CHECK(f32s);
+    CHECK(f64s);
+
     CHECK(kvs);
     CHECK(kvs2);
 
@@ -173,7 +187,7 @@ bool operator==(const kuntest::AAA& a, const pbtest::AAA& b)
 
 void ExpectEQ(const kuntest::AAA& a, const pbtest::AAA& b)
 {
-    EXPECT_TRUE(a.i32 == b.i32());
+    EXPECT_EQ(a.i32, b.i32());
     EXPECT_TRUE(a.i64 == b.i64());
     EXPECT_TRUE(a.u32 == b.u32());
     EXPECT_TRUE(a.u64 == b.u64());
@@ -183,6 +197,13 @@ void ExpectEQ(const kuntest::AAA& a, const pbtest::AAA& b)
     EXPECT_TRUE(a.bt == b.bt());
     EXPECT_TRUE(a.e == kuntest::Error(b.e()));
     EXPECT_TRUE(a.b == b.b());
+
+    EXPECT_TRUE(a.s32 == b.s32());
+    EXPECT_TRUE(a.s64 == b.s64());
+    EXPECT_TRUE(a.sf32 == b.sf32());
+    EXPECT_TRUE(a.sf64 == b.sf64());
+    EXPECT_TRUE(a.f32 == b.f32());
+    EXPECT_TRUE(a.f64 == b.f64());
 
     EXPECT_TRUE(a.i32s == b.i32s());
     EXPECT_TRUE(a.u32s == b.u32s());
@@ -194,6 +215,14 @@ void ExpectEQ(const kuntest::AAA& a, const pbtest::AAA& b)
     EXPECT_TRUE(a.bts == b.bts());
     EXPECT_TRUE(a.es == b.es());
     EXPECT_TRUE(a.bs == b.bs());
+
+    EXPECT_TRUE(a.s32s == b.s32s());
+    EXPECT_TRUE(a.s64s == b.s64s());
+    EXPECT_TRUE(a.sf32s == b.sf32s());
+    EXPECT_TRUE(a.sf64s == b.sf64s());
+    EXPECT_TRUE(a.f32s == b.f32s());
+    EXPECT_TRUE(a.f64s == b.f64s());
+
     EXPECT_TRUE(a.kvs == b.kvs());
     EXPECT_TRUE(a.kvs2 == b.kvs2());
 
@@ -260,6 +289,13 @@ pbtest::AAA ToPb(const kuntest::AAA& a)
     COPY(bt);
     b.set_e(::pbtest::Error(a.e));
 
+    COPY(s32);
+    COPY(s64);
+    COPY(sf32);
+    COPY(sf64);
+    COPY(f32);
+    COPY(f64);
+
     COPY2(i32s);
     COPY2(u32s);
     COPY2(i64s);
@@ -268,6 +304,13 @@ pbtest::AAA ToPb(const kuntest::AAA& a)
     COPY2(ds);
     COPY2(ss);
     COPY2(bts);
+
+    COPY2(s32s);
+    COPY2(s64s);
+    COPY2(sf32s);
+    COPY2(sf64s);
+    COPY2(f32s);
+    COPY2(f64s);
 
     for (auto i : a.bs) {
         b.add_bs(i);
@@ -338,7 +381,7 @@ void GenRand(T& value)
     } else if constexpr (std::is_same_v<T, bool>) {
         value = rng() % 2;
     } else if constexpr (kun::is_string_v<T>) {
-        value.resize(rng() % 1000);
+        value.resize(rng() % 100);
         for (auto& i : value) {
             i = rng() % 128;
         }

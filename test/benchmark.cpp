@@ -11,6 +11,12 @@
 
 int main(int argc, char* argv[])
 {
+    int n = 100;
+    if (argc >= 2) {
+        n = atoi(argv[1]);
+    }
+    std::cout << "benchmark n: " << n << std::endl;
+
     kuntest::AAA a;
     a.i32 = rng();
     a.u32 = rng();
@@ -35,7 +41,6 @@ int main(int argc, char* argv[])
     }
 
     pbtest::AAA b = ToPb(a);
-    const int n = 100000;
     {
 
         auto start = std::chrono::steady_clock::now();

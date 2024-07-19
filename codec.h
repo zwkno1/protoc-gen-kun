@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <optional>
 #include <string>
@@ -42,17 +43,27 @@ public:
         assert(size == ptr_ - reinterpret_cast<uint8_t*>(data_.data()));
     }
 
-    template <typename T>
-    void Encode(const FieldMeta& meta, const T& value)
+    template <typename Msg, int index, typename T>
+    void Encode(const T& value)
     {
+        constexpr auto meta = Msg::__meta__[index];
         if constexpr (is_boolean_v<T>) {
             EncodeTag(meta.tag);
             uint8_t v = value ? 1 : 0;
             EncodeRaw(&v, 1);
             return;
-        } else if constexpr (is_integral_v<T> || is_enum_v<T>) {
+        } else if constexpr (is_integral_v<T>) {
             EncodeTag(meta.tag);
-            EncodeVarint(EncodeInterger(value));
+
+            if constexpr (meta.codec == CODEC_FIXED) {
+                EncodeRaw(&value, 1);
+            } else {
+                EncodeInt<meta.codec>(value);
+            }
+            return;
+        } else if constexpr (is_enum_v<T>) {
+            EncodeTag(meta.tag);
+            EncodeInt<meta.codec>(value);
             return;
         } else if constexpr (is_floating_point_v<T>) {
             EncodeTag(meta.tag);
@@ -83,15 +94,32 @@ public:
                 EncodeLengthDelim(meta.tag, size);
                 EncodeRaw(value.data(), value.size());
                 return;
-            } else if constexpr (is_integral_v<EntryType> || is_enum_v<EntryType>) {
+            } else if constexpr (is_integral_v<EntryType>) {
+                if constexpr (meta.codec == CODEC_FIXED) {
+                    size_t size = sizeof(EntryType) * value.size();
+                    EncodeLengthDelim(meta.tag, size);
+                    EncodeRaw(value.data(), value.size());
+                } else {
+                    size_t size = 0;
+                    for (auto v : value) {
+                        size += Codec<meta.codec>::EncodedSize(v);
+                    }
+                    EncodeLengthDelim(meta.tag, size);
+
+                    for (auto v : value) {
+                        EncodeInt<meta.codec>(v);
+                    }
+                }
+                return;
+            } else if constexpr (is_enum_v<EntryType>) {
                 size_t size = 0;
-                for (auto& v : value) {
-                    size += IntergerByteSize(EncodeInterger(v));
+                for (auto v : value) {
+                    size += Codec<meta.codec>::EncodedSize(v);
                 }
 
                 EncodeLengthDelim(meta.tag, size);
-                for (auto& v : value) {
-                    EncodeVarint(EncodeInterger(v));
+                for (auto v : value) {
+                    EncodeInt<meta.codec>(v);
                 }
                 return;
             } else if constexpr (is_string_v<EntryType>) {
@@ -115,7 +143,7 @@ public:
             using KeyType = typename T::key_type;
             using ValueType = typename T::mapped_type;
             for (auto& entry : value) {
-                ConstMapEntry<KeyType, ValueType> e{ entry };
+                ConstMapEntry<KeyType, ValueType, meta.codec> e{ entry };
                 auto size = e.ByteSize();
                 EncodeLengthDelim(meta.tag, size);
                 e.Encode(*this);
@@ -153,6 +181,12 @@ private:
         }
         *ptr_ = static_cast<uint8_t>(value);
         ptr_++;
+    }
+
+    template <uint32_t ct, typename T>
+    inline void EncodeInt(T value)
+    {
+        EncodeVarint(Codec<ct>::Encode(value));
     }
 
     template <typename T>
@@ -203,13 +237,86 @@ public:
     }
 
     template <typename T>
+        requires(is_message_v<T>)
     bool Decode(T& value)
     {
+        while (ptr_ < end_) {
+            auto [ok, tag] = DecodeVarint();
+
+            if (!ok) {
+                return false;
+            }
+
+            switch (tag & 0x07) {
+            case WIRE_VARINT: {
+                auto [ok, v] = DecodeVarint();
+                if (!ok) {
+                    return false;
+                }
+
+                Decoder d{ reinterpret_cast<uint8_t*>(&v), sizeof(v) };
+                if (!value.Decode(d, tag)) {
+                    return false;
+                }
+            } break;
+            case WIRE_FIXED32: {
+                if (Size() < 4) {
+                    return false;
+                }
+
+                Decoder d{ ptr_, 4 };
+                if (!value.Decode(d, tag)) {
+                    return false;
+                }
+                ptr_ += 4;
+            } break;
+            case WIRE_FIXED64: {
+                if (Size() < 8) {
+                    return false;
+                }
+
+                Decoder d{ ptr_, 8 };
+                if (!value.Decode(d, tag)) {
+                    return false;
+                }
+                ptr_ += 8;
+            } break;
+            case WIRE_LENGTH_DELIM: {
+                auto [ok, length] = DecodeLength();
+                if (!ok) {
+                    return false;
+                }
+
+                Decoder d{ ptr_, length };
+                if (!value.Decode(d, tag)) {
+                    return false;
+                }
+                ptr_ += length;
+            } break;
+            default:
+                return false;
+            }
+        }
+        return ptr_ == end_;
+    }
+
+    template <typename Msg, int index, typename T>
+    bool Decode(T& value)
+    {
+        constexpr auto meta = Msg::__meta__[index];
         if constexpr (is_boolean_v<T>) {
             value = (*reinterpret_cast<const uint64_t*>(ptr_) != 0);
             return true;
         } else if constexpr (is_integral_v<T>) {
-            if (!Convert(*reinterpret_cast<const uint64_t*>(ptr_), value)) {
+            if constexpr (meta.codec == CODEC_FIXED) {
+                if (!DecodeRaw(value)) {
+                    return false;
+                }
+                return Empty();
+            }
+            uint64_t v = Codec<meta.codec>::Decode(*reinterpret_cast<const uint64_t*>(ptr_));
+
+            if (!Convert(v, value)) {
                 return false;
             }
             return true;
@@ -222,50 +329,42 @@ public:
             value = static_cast<T>(v);
             return true;
         } else if constexpr (is_floating_point_v<T>) {
-            if (Size() < sizeof(T)) {
+            if (!DecodeRaw(value)) {
                 return false;
             }
-
-            value = *reinterpret_cast<const T*>(ptr_);
-            if constexpr (std::endian::native == std::endian::big) {
-                value = std::byteswap(value);
-            }
-            ptr_ += sizeof(T);
-            return true;
+            return Empty();
         } else if constexpr (is_string_v<T>) {
             value = std::string{ reinterpret_cast<const char*>(ptr_), reinterpret_cast<const char*>(end_) };
             return true;
         } else if constexpr (is_repeated<T>::value) {
             using EntryType = typename T::value_type;
             if constexpr (is_boolean_v<EntryType>) {
-                for (; ptr_ < end_; ptr_++) {
-                    value.push_back(*ptr_ != 0);
+                value.resize(end_ - ptr_);
+                for (size_t i = 0; i < value.size(); i++) {
+                    value[i] = (*(ptr_ + i) != 0);
                 }
                 return true;
             } else if constexpr (is_floating_point_v<EntryType>) {
-                size_t size = end_ - ptr_;
-                if (size % sizeof(EntryType) != 0) {
+                if (!DecodeRaw(value)) {
                     return false;
                 }
 
-                value.resize(size / sizeof(EntryType));
-                if constexpr (std::endian::native == std::endian::big) {
-                    for (auto& entry : value) {
-                        entry = std::byteswap(*reinterpret_cast<EntryType*>(ptr_));
-                        ptr_ += sizeof(EntryType);
-                    }
-                } else {
-                    std::memcpy(&value[0], ptr_, size);
-                    ptr_ += size;
-                }
                 return true;
-            } else if constexpr (is_integral_v<EntryType> || is_enum_v<EntryType>) {
-                while (ptr_ < end_) {
-                    if constexpr (is_integral_v<EntryType>) {
-                        auto [ok, v] = DecodeVarInt();
+            } else if constexpr (is_integral_v<EntryType>) {
+                if constexpr (meta.codec == CODEC_FIXED) {
+                    if (!DecodeRaw(value)) {
+                        return false;
+                    }
+
+                    return true;
+                } else {
+                    while (ptr_ < end_) {
+                        auto [ok, v] = DecodeVarint();
                         if (!ok) {
                             return false;
                         }
+
+                        v = Codec<meta.codec>::Decode(v);
 
                         EntryType tmp;
                         if (!Convert(v, tmp)) {
@@ -273,105 +372,51 @@ public:
                         }
 
                         value.push_back(tmp);
-                    } else {
-                        auto [ok, v] = DecodeVarInt();
-                        if (!ok) {
-                            return false;
-                        }
-
-                        int32_t tmp;
-                        if (!Convert(v, tmp)) {
-                            return false;
-                        }
-
-                        value.push_back(EntryType(tmp));
                     }
+                    return Empty();
                 }
+            } else if constexpr (is_enum_v<EntryType>) {
+                while (ptr_ < end_) {
+                    auto [ok, v] = DecodeVarint();
+                    if (!ok) {
+                        return false;
+                    }
 
-                if (ptr_ != end_) {
-                    return false;
+                    int32_t tmp;
+                    if (!Convert(v, tmp)) {
+                        return false;
+                    }
+
+                    value.push_back(static_cast<EntryType>(tmp));
                 }
-
-                return true;
+                return Empty();
             }
+
+            std::unreachable();
+            return false;
+
         } else if constexpr (is_map_v<T>) {
             using KeyType = typename T::key_type;
             using ValueType = typename T::mapped_type;
 
             std::pair<KeyType, ValueType> v;
-            MapEntry<KeyType, ValueType> entry{ v };
-            if (!Decode(entry)) {
+            MapEntry<KeyType, ValueType, meta.codec> entry{ v };
+            if (!this->template Decode(entry)) {
                 return false;
             }
             value.emplace(std::move(v));
             return true;
         } else if constexpr (is_message_v<T>) {
-            while (ptr_ < end_) {
-                auto [ok, tag] = DecodeVarInt();
-
-                if (!ok) {
-                    return false;
-                }
-
-                switch (tag & 0x07) {
-                case WIRE_VARINT: {
-                    auto [ok, v] = DecodeVarInt();
-                    if (!ok) {
-                        return false;
-                    }
-
-                    Decoder d{ reinterpret_cast<uint8_t*>(&v), sizeof(v) };
-                    if (!value.Decode(d, tag)) {
-                        return false;
-                    }
-                } break;
-                case WIRE_FIXED32: {
-                    if (Size() < 4) {
-                        return false;
-                    }
-
-                    Decoder d{ ptr_, 4 };
-                    if (!value.Decode(d, tag)) {
-                        return false;
-                    }
-                    ptr_ += 4;
-                } break;
-                case WIRE_FIXED64: {
-                    if (Size() < 8) {
-                        return false;
-                    }
-
-                    Decoder d{ ptr_, 8 };
-                    if (!value.Decode(d, tag)) {
-                        return false;
-                    }
-                    ptr_ += 8;
-                } break;
-                case WIRE_LENGTH_DELIM: {
-                    auto [ok, length] = DecodeLength();
-                    if (!ok) {
-                        return false;
-                    }
-
-                    Decoder d{ ptr_, length };
-                    if (!value.Decode(d, tag)) {
-                        return false;
-                    }
-                    ptr_ += length;
-                } break;
-                default:
-                    return false;
-                }
-            }
-            return ptr_ == end_;
+            return Decode(value);
         }
+
         std::unreachable();
         return false;
     }
 
 private:
     template <typename T = uint64_t>
-    std::tuple<bool, T> DecodeVarInt()
+    std::tuple<bool, T> DecodeVarint()
     {
         T value = 0;
         size_t n = 0;
@@ -398,11 +443,47 @@ private:
 
     inline std::tuple<bool, uint64_t> DecodeLength()
     {
-        auto [ok, size] = DecodeVarInt();
+        auto [ok, size] = DecodeVarint();
         if (!ok || Size() < size) {
             return { false, 0 };
         }
         return { ok, size };
+    }
+
+    template <typename T>
+    bool DecodeRaw(T& value)
+    {
+        if (sizeof(T) > Size()) {
+            return false;
+        }
+
+        value = *reinterpret_cast<const T*>(ptr_);
+        if constexpr (std::endian::native == std::endian::big) {
+            value = std::byteswap(value);
+        }
+        ptr_ += sizeof(T);
+        return true;
+    }
+
+    template <typename T>
+    bool DecodeRaw(std::vector<T>& value)
+    {
+        size_t size = end_ - ptr_;
+        if (size % sizeof(T) != 0) {
+            return false;
+        }
+
+        value.resize(size / sizeof(T));
+        if constexpr (std::endian::native == std::endian::big) {
+            for (auto& v : value) {
+                v = std::byteswap(*reinterpret_cast<const T*>(ptr_));
+                ptr_ += sizeof(T);
+            }
+        } else {
+            std::memcpy(value.data(), ptr_, size);
+        }
+        ptr_ += sizeof(T);
+        return true;
     }
 
     template <typename T>
@@ -426,6 +507,7 @@ private:
     }
 
     inline size_t Size() const { return end_ - ptr_; }
+    inline bool Empty() const { return end_ - ptr_ == 0; }
 
     const uint8_t* ptr_;
     const uint8_t* end_;

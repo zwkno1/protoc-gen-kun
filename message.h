@@ -156,7 +156,15 @@ public:
             {
               "bytesize_body",
               [&] {
-                  for (auto& field : fields_) {
+                  for (size_t i = 0; i < fields_.size(); i++) {
+                      auto& field = fields_[i];
+                      size_t idx = 0;
+                      for (; idx < sortedIndex_.size(); idx++) {
+                          if (sortedIndex_[idx] == i) {
+                              break;
+                          }
+                      }
+                      auto clean = p.WithVars({ { "meta_index", idx } });
                       field.GenerateByteSize(p);
                       p.Print("\n");
                   }
@@ -225,12 +233,32 @@ public:
     void GenerateHelperFunctions(Printer& p) const
     {
         auto v = p.WithVars(MakeVars());
-        p.Emit(R"cc(
+        p.Emit(
+          //{
+          //  { "field_num", fields_.size() },
+          //  { "field_meta",
+          //    [&] {
+          //        for (auto i : sortedIndex_) {
+          //            fields_[i].GenerateMeta(p);
+          //            p.Print("\n");
+          //        }
+          //    } },
+          //},
+          R"cc(
             template<>
             struct is_message<$ns$::$class$> : public std::true_type
             {
             };
-          )cc");
+            )cc");
+
+        // template<>
+        // struct message_meta<$ns$::$class$>
+        //{
+        //     inline constexpr static std::array<::$kun_ns$::FieldMeta, $field_num$> __meta__ = {
+        //         $field_meta$
+        //     };
+        // };
+        //)cc");
     }
 
     void GenerateMeta(Printer& p) const
@@ -247,15 +275,16 @@ public:
               } },
           },
           R"cc(
-          inline constexpr static std::array<::$kun_ns$::FieldMeta, $field_num$> __meta__ = {
-              $field_meta$
-          };)cc");
+           inline constexpr static std::array<::$kun_ns$::FieldMeta, $field_num$> __meta__ = {
+               $field_meta$
+           };)cc");
     }
 
     std::vector<Printer::Sub> MakeVars() const
     {
         return {
             { "class", google::protobuf::compiler::cpp::ClassName(desc_) },
+            { "qualified_class", google::protobuf::compiler::cpp::QualifiedClassName(desc_) },
         };
     }
 
