@@ -29,7 +29,7 @@ public:
               } },
           },
           R"cc(
-          enum $enum$ : int32_t
+          enum class $enum$ : int32_t
           {
               $body$
           };

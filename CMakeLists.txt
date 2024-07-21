@@ -131,9 +131,6 @@ if(WITH_TEST)
   include(GoogleTest)
   enable_testing()
 
-  add_executable(bench test/benchmark.cpp ${CMAKE_BINARY_DIR}/b.pb.cc
-                       ${CMAKE_BINARY_DIR}/a.kun.h)
-
   add_executable(
     encode_pb_test test/encode_pb_test.cpp ${CMAKE_BINARY_DIR}/b.pb.cc
                    ${CMAKE_BINARY_DIR}/a.kun.h)
@@ -144,5 +141,19 @@ if(WITH_TEST)
 
   gtest_discover_tests(encode_pb_test)
   gtest_discover_tests(decode_pb_test)
+
+  # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-instr-generate
+  # -fcoverage-mapping -pg")
+
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g ")
+  set(CMAKE_MODULE_PATH
+      "${CMAKE_CURRENT_SOURCE_DIR}/cmake;${CMAKE_MODULE_PATH}")
+
+  find_package(Gperftools REQUIRED)
+  include_directories(GPERFTOOLS_INCLUDE_DIR)
+
+  add_executable(bench test/benchmark.cpp ${CMAKE_BINARY_DIR}/b.pb.cc
+                       ${CMAKE_BINARY_DIR}/a.kun.h)
+  target_link_libraries(bench ${GPERFTOOLS_LIBRARIES})
 
 endif(WITH_TEST)

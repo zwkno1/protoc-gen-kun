@@ -19,6 +19,7 @@ namespace kun {
 static_assert(sizeof(float) == 4, "");
 static_assert(sizeof(double) == 8, "");
 
+#define NOINLINE // [[clang::noinline]]
 class Encoder
 {
 
@@ -35,7 +36,7 @@ public:
 
     template <typename T>
         requires(is_message_v<T>)
-    void Encode(const T& value)
+    inline void Encode(const T& value)
     {
         auto size = value.ByteSize();
         EnsureSpace(size);
@@ -44,7 +45,7 @@ public:
     }
 
     template <typename Msg, int index, typename T>
-    void Encode(const T& value)
+    inline void Encode(const T& value)
     {
         constexpr auto meta = Msg::__meta__[index];
         if constexpr (is_boolean_v<T>) {
@@ -55,15 +56,15 @@ public:
         } else if constexpr (is_integral_v<T>) {
             EncodeTag(meta.tag);
 
-            if constexpr (meta.codec == CODEC_FIXED) {
+            if constexpr (meta.encoding == ENCODING_FIXED) {
                 EncodeRaw(&value, 1);
             } else {
-                EncodeInt<meta.codec>(value);
+                EncodeInt<meta.encoding>(value);
             }
             return;
         } else if constexpr (is_enum_v<T>) {
             EncodeTag(meta.tag);
-            EncodeInt<meta.codec>(value);
+            EncodeInt<meta.encoding>(value);
             return;
         } else if constexpr (is_floating_point_v<T>) {
             EncodeTag(meta.tag);
@@ -95,31 +96,31 @@ public:
                 EncodeRaw(value.data(), value.size());
                 return;
             } else if constexpr (is_integral_v<EntryType>) {
-                if constexpr (meta.codec == CODEC_FIXED) {
+                if constexpr (meta.encoding == ENCODING_FIXED) {
                     size_t size = sizeof(EntryType) * value.size();
                     EncodeLengthDelim(meta.tag, size);
                     EncodeRaw(value.data(), value.size());
                 } else {
                     size_t size = 0;
                     for (auto v : value) {
-                        size += Codec<meta.codec>::EncodedSize(v);
+                        size += Encoding<meta.encoding>::EncodedSize(v);
                     }
                     EncodeLengthDelim(meta.tag, size);
 
                     for (auto v : value) {
-                        EncodeInt<meta.codec>(v);
+                        EncodeInt<meta.encoding>(v);
                     }
                 }
                 return;
             } else if constexpr (is_enum_v<EntryType>) {
                 size_t size = 0;
                 for (auto v : value) {
-                    size += Codec<meta.codec>::EncodedSize(v);
+                    size += Encoding<meta.encoding>::EncodedSize(v);
                 }
 
                 EncodeLengthDelim(meta.tag, size);
                 for (auto v : value) {
-                    EncodeInt<meta.codec>(v);
+                    EncodeInt<meta.encoding>(v);
                 }
                 return;
             } else if constexpr (is_string_v<EntryType>) {
@@ -143,7 +144,7 @@ public:
             using KeyType = typename T::key_type;
             using ValueType = typename T::mapped_type;
             for (auto& entry : value) {
-                ConstMapEntry<KeyType, ValueType, meta.codec> e{ entry };
+                ConstMapEntry<KeyType, ValueType, meta.encoding> e{ entry };
                 auto size = e.ByteSize();
                 EncodeLengthDelim(meta.tag, size);
                 e.Encode(*this);
@@ -156,22 +157,22 @@ public:
     inline std::string& Str() { return data_; }
 
 private:
-    inline void EnsureSpace(size_t size)
+    NOINLINE inline void EnsureSpace(size_t size)
     {
         data_.resize(size);
         ptr_ = reinterpret_cast<uint8_t*>(data_.data());
     }
 
-    inline void EncodeTag(uint64_t tag) { EncodeVarint(tag); }
+    NOINLINE inline void EncodeTag(uint64_t tag) { EncodeVarint(tag); }
 
-    inline void EncodeLengthDelim(uint64_t tag, uint64_t size)
+    NOINLINE inline void EncodeLengthDelim(uint64_t tag, uint64_t size)
     {
         EncodeVarint(tag);
         EncodeVarint(size);
     }
 
     template <typename T>
-    inline void EncodeVarint(T value)
+    NOINLINE inline void EncodeVarint(T value)
     {
         static_assert(std::is_unsigned_v<T>, "Varint encode must be unsigned");
         while (value >= 0x80) [[unlikely]] {
@@ -184,18 +185,18 @@ private:
     }
 
     template <uint32_t ct, typename T>
-    inline void EncodeInt(T value)
+    NOINLINE inline void EncodeInt(T value)
     {
-        EncodeVarint(Codec<ct>::Encode(value));
+        EncodeVarint(Encoding<ct>::Encode(value));
     }
 
     template <typename T>
-    inline void EncodeRaw(const T* src, size_t size)
+    NOINLINE inline void EncodeRaw(const T* src, size_t size)
     {
         if constexpr ((sizeof(T) != 1) && std::endian::native == std::endian::big) {
             for (auto end = src + size; src < end; src++) {
                 T v = std::byteswap(*src);
-                std::memcpy(ptr_, src, size * sizeof(T));
+                std::memcpy(ptr_, &v, sizeof(T));
                 ptr_ += sizeof(T);
             }
         } else {
@@ -238,7 +239,7 @@ public:
 
     template <typename T>
         requires(is_message_v<T>)
-    bool Decode(T& value)
+    inline bool Decode(T& value)
     {
         while (ptr_ < end_) {
             auto [ok, tag] = DecodeVarint();
@@ -301,20 +302,20 @@ public:
     }
 
     template <typename Msg, int index, typename T>
-    bool Decode(T& value)
+    inline bool Decode(T& value)
     {
         constexpr auto meta = Msg::__meta__[index];
         if constexpr (is_boolean_v<T>) {
             value = (*reinterpret_cast<const uint64_t*>(ptr_) != 0);
             return true;
         } else if constexpr (is_integral_v<T>) {
-            if constexpr (meta.codec == CODEC_FIXED) {
+            if constexpr (meta.encoding == ENCODING_FIXED) {
                 if (!DecodeRaw(value)) {
                     return false;
                 }
                 return Empty();
             }
-            uint64_t v = Codec<meta.codec>::Decode(*reinterpret_cast<const uint64_t*>(ptr_));
+            uint64_t v = Encoding<meta.encoding>::Decode(*reinterpret_cast<const uint64_t*>(ptr_));
 
             if (!Convert(v, value)) {
                 return false;
@@ -351,7 +352,7 @@ public:
 
                 return true;
             } else if constexpr (is_integral_v<EntryType>) {
-                if constexpr (meta.codec == CODEC_FIXED) {
+                if constexpr (meta.encoding == ENCODING_FIXED) {
                     if (!DecodeRaw(value)) {
                         return false;
                     }
@@ -364,7 +365,7 @@ public:
                             return false;
                         }
 
-                        v = Codec<meta.codec>::Decode(v);
+                        v = Encoding<meta.encoding>::Decode(v);
 
                         EntryType tmp;
                         if (!Convert(v, tmp)) {
@@ -400,7 +401,7 @@ public:
             using ValueType = typename T::mapped_type;
 
             std::pair<KeyType, ValueType> v;
-            MapEntry<KeyType, ValueType, meta.codec> entry{ v };
+            MapEntry<KeyType, ValueType, meta.encoding> entry{ v };
             if (!this->template Decode(entry)) {
                 return false;
             }
@@ -451,7 +452,7 @@ private:
     }
 
     template <typename T>
-    bool DecodeRaw(T& value)
+    inline bool DecodeRaw(T& value)
     {
         if (sizeof(T) > Size()) {
             return false;
@@ -466,7 +467,7 @@ private:
     }
 
     template <typename T>
-    bool DecodeRaw(std::vector<T>& value)
+    inline bool DecodeRaw(std::vector<T>& value)
     {
         size_t size = end_ - ptr_;
         if (size % sizeof(T) != 0) {
@@ -487,7 +488,7 @@ private:
     }
 
     template <typename T>
-    bool Convert(uint64_t from, T& to)
+    inline bool Convert(uint64_t from, T& to)
     {
         if constexpr (std::is_signed_v<T>) {
             int64_t sv = std::bit_cast<int64_t>(from);

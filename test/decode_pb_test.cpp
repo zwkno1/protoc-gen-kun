@@ -1,6 +1,7 @@
+#include <codec.h>
+
 #include "a.kun.h"
 #include "b.pb.h"
-#include "codec.h"
 #include "test/helper.h"
 
 void CheckDecode(const pbtest::AAA& b)
@@ -55,6 +56,9 @@ TEST(Decode, numeric)
     GenRandRepeated(a.sf64s);
     GenRandRepeated(a.f32s);
     GenRandRepeated(a.f64s);
+    for (int i = 0; i < 1024; i++) {
+        a.s.push_back(i);
+    }
 
     CheckDecode(ToPb(a));
 }

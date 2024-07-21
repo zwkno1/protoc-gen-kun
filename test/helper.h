@@ -51,11 +51,20 @@ bool operator==(const std::vector<T>& a, const google::protobuf::RepeatedField<U
         } else {
             if constexpr (kun::is_integral_v<T> || kun::is_string_v<T>) {
                 EXPECT_EQ(a[i], b[i]);
+                if (a[i] != b[i]) {
+                    return false;
+                }
+            } else if constexpr (kun::is_enum_v<T>) {
+                EXPECT_TRUE(static_cast<int32_t>(a[i]) == static_cast<int32_t>(b[i]));
+                if (static_cast<int32_t>(a[i]) != static_cast<int32_t>(b[i])) {
+                    return false;
+                }
             } else {
                 EXPECT_TRUE(a[i] == b[i]);
-            }
-            if (a[i] != b[i]) {
-                return false;
+
+                if (a[i] != b[i]) {
+                    return false;
+                }
             }
         }
     }
@@ -236,30 +245,6 @@ void ExpectEQ(const kuntest::AAA& a, const pbtest::AAA& b)
 
 pbtest::AAA ToPb(const kuntest::AAA& a)
 {
-    // int32 i32 = 112010;
-    // uint32 u32 = 10111;
-    // int64 i64 = 987112;
-    // uint64 u64 = 684113;
-    // float f = 35114;
-    // double d = 2387115;
-    // string s = 9116;
-    // bytes b = 90117;
-    // Error e = 2118;
-
-    // repeated int32 i32s = 56210;
-    // repeated uint32 u32s = 675211;
-    // repeated int64 i64s = 2098712;
-    // repeated uint64 u64s = 23123213;
-    // repeated float fs = 123121124;
-    // repeated double ds = 1321215;
-    // repeated string ss = 21126;
-    // repeated bytes bs = 1231217;
-    // repeated Error es = 2181231;
-
-    // map<int32, int32> kvs = 3;
-    // map<int32, BBB> kvs2 = 4;
-    // BBB bbb = 16;
-    // repeated BBB bbbs = 123123;
 
 #define COPY(name) b.set_##name(a.name)
 
@@ -400,4 +385,47 @@ void GenRandRepeated(std::vector<T>& value, size_t max = 1000)
         GenRand(v);
         value.push_back(std::move(v));
     }
+}
+
+inline kuntest::AAA GenAAA()
+{
+    kuntest::AAA a;
+
+    GenRand(a.i32);
+    GenRand(a.u32);
+    GenRand(a.i64);
+    GenRand(a.u64);
+    GenRand(a.e);
+    GenRand(a.f);
+    GenRand(a.d);
+    GenRand(a.s);
+    GenRand(a.bt);
+    GenRand(a.b);
+
+    GenRand(a.s32);
+    GenRand(a.s64);
+    GenRand(a.sf32);
+    GenRand(a.sf64);
+    GenRand(a.f32);
+    GenRand(a.f64);
+
+    GenRandRepeated(a.i32s);
+    GenRandRepeated(a.u32s);
+    GenRandRepeated(a.i64s);
+    GenRandRepeated(a.u64s);
+    GenRandRepeated(a.es);
+    GenRandRepeated(a.fs);
+
+    GenRandRepeated(a.ds);
+    GenRandRepeated(a.ss);
+    GenRandRepeated(a.bts);
+    GenRandRepeated(a.bs);
+
+    GenRandRepeated(a.s32s);
+    GenRandRepeated(a.s64s);
+    GenRandRepeated(a.sf32s);
+    GenRandRepeated(a.sf64s);
+    GenRandRepeated(a.f32s);
+    GenRandRepeated(a.f64s);
+    return a;
 }

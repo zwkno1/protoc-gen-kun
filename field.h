@@ -31,7 +31,7 @@ std::string GetTypeName(const FieldDescriptor* fd)
     return typenames[fd->cpp_type()];
 }
 
-kun::CodecType GetCodecType(const FieldDescriptor* field)
+kun::EncodingType GetEncodingType(const FieldDescriptor* field)
 {
     switch (field->type()) {
     case FieldDescriptor::TYPE_FIXED32:
@@ -40,38 +40,25 @@ kun::CodecType GetCodecType(const FieldDescriptor* field)
     case FieldDescriptor::TYPE_SFIXED64:
     case FieldDescriptor::TYPE_DOUBLE:
     case FieldDescriptor::TYPE_FLOAT:
-        return kun::CODEC_FIXED;
+        return kun::ENCODING_FIXED;
     case FieldDescriptor::TYPE_SINT32:
     case FieldDescriptor::TYPE_SINT64:
-        return kun::CODEC_ZIGZAG;
+        return kun::ENCODING_ZIGZAG;
     case FieldDescriptor::TYPE_INT32:
     case FieldDescriptor::TYPE_INT64:
     case FieldDescriptor::TYPE_UINT32:
     case FieldDescriptor::TYPE_UINT64:
     case FieldDescriptor::TYPE_ENUM:
     case FieldDescriptor::TYPE_BOOL:
-        return kun::CODEC_VARINT;
+        return kun::ENCODING_VARINT;
     case FieldDescriptor::TYPE_STRING:
+        return kun::ENCODING_UTF8;
     case FieldDescriptor::TYPE_BYTES:
     case FieldDescriptor::TYPE_GROUP:
     case FieldDescriptor::TYPE_MESSAGE:
     }
-    return kun::CODEC_NONE;
+    return kun::ENCODING_NONE;
 }
-
-// std::string_view CodecName(kun::CodecType type)
-// {
-//     switch (type) {
-//     case kun::CODEC_FIXED:
-//         return "::kun::CODEC_FIXED";
-//     case kun::CODEC_ZIGZAG:
-//         return "::kun::CODEC_ZIGZAG";
-//     case kun::CODEC_VARINT:
-//         return "::kun::CODEC_VARINT";
-//     default:
-//     }
-//     return "::kun::CODEC_NONE";
-// }
 
 uint64_t MakeTag(const FieldDescriptor* desc)
 {
@@ -149,7 +136,7 @@ public:
     {
         p.Emit(R"cc(
         if (::$kun_ns$::HasValue($name$)) {
-            total_size += ::$kun_ns$::ByteSizeWithTag<__meta__[$meta_index$].tag, __meta__[$meta_index$].codec>($name$);
+            total_size += ::$kun_ns$::ByteSizeWithTag<$class$, $meta_index$>($name$);
         } 
         )cc");
     }
@@ -158,18 +145,18 @@ public:
 
     virtual void GenerateMeta(Printer& p) const
     {
-        p.Emit(R"cc(::$kun_ns$::FieldMeta{ $number$, $tag$, $codec$, "$name$" }, )cc");
+        p.Emit(R"cc(::$kun_ns$::FieldMeta{ $number$, $tag$, $encoding$, "$name$" }, )cc");
     }
 
     std::vector<Printer::Sub> MakeVars() const
     {
-        uint32_t c = kun::CODEC_NONE;
+        uint32_t c = kun::ENCODING_NONE;
 
         if (field_->is_map()) {
-            c = (GetCodecType(field_->message_type()->map_key()) << 8) |
-              GetCodecType(field_->message_type()->map_value());
+            c = (GetEncodingType(field_->message_type()->map_key()) << 8) |
+              GetEncodingType(field_->message_type()->map_value());
         } else {
-            c = GetCodecType(field_);
+            c = GetEncodingType(field_);
         }
 
         return {
@@ -178,7 +165,7 @@ public:
             { "number", field_->number() },
             { "index", field_->index() },
             { "tag", MakeTag(field_) },
-            { "codec", c },
+            { "encoding", c },
         };
     }
 
@@ -245,7 +232,7 @@ public:
     {
         p.Emit(R"cc(
         if($name$) {
-            total_size += ::$kun_ns$::ByteSizeWithTag<__meta__[$meta_index$].tag, __meta__[$meta_index$].codec>(*$name$);
+            total_size += ::$kun_ns$::ByteSizeWithTag<$class$, $meta_index$>(*$name$);
         }
         )cc");
     }

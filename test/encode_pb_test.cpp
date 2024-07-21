@@ -2,10 +2,11 @@
 #include <string>
 #include <type_traits>
 
+#include <codec.h>
+#include <kun.h>
+
 #include "a.kun.h"
 #include "b.pb.h"
-#include "codec.h"
-#include "kun.h"
 #include "test/helper.h"
 
 void CheckEncode(const kuntest::AAA& a)
@@ -61,14 +62,12 @@ TEST(EncodePb, primitive)
     GenRandRepeated(a.f32s);
     GenRandRepeated(a.f64s);
 
-    //
     // pbtest::AAA b = ToPb(a);
     // Print(b.SerializeAsString());
     // kun::Encoder enc;
     // enc.Encode(a);
     // Print(enc.Str());
     // std::cout << a.ByteSize() << ", " << b.ByteSizeLong() << std::endl;
-    //
 
     CheckEncode(a);
 }
