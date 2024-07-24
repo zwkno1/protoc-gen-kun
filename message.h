@@ -56,6 +56,8 @@ public:
               $funcs$
 
               $fields$
+
+              mutable size_t _cached_size_;
           };
           )cc");
     }
@@ -68,9 +70,9 @@ public:
             {
               "encode_body",
               [&] {
-                  for (size_t i = 0; i < sortedIndex_.size(); i++) {
+                  for (size_t i = 0; i < fields_.size(); i++) {
                       auto clean = p.WithVars({ { "meta_index", i } });
-                      fields_[sortedIndex_[i]].GenerateEncode(p);
+                      fields_[i].GenerateEncode(p);
                       if (i != sortedIndex_.size() - 1) {
                           p.Print("\n");
                       }
@@ -80,9 +82,9 @@ public:
             {
               "decode_body",
               [&] {
-                  for (size_t i = 0; i < sortedIndex_.size(); i++) {
+                  for (size_t i = 0; i < fields_.size(); i++) {
                       auto clean = p.WithVars({ { "meta_index", i } });
-                      fields_[sortedIndex_[i]].GenerateDecode(p);
+                      fields_[i].GenerateDecode(p);
                   }
               },
             },
@@ -158,13 +160,7 @@ public:
               [&] {
                   for (size_t i = 0; i < fields_.size(); i++) {
                       auto& field = fields_[i];
-                      size_t idx = 0;
-                      for (; idx < sortedIndex_.size(); idx++) {
-                          if (sortedIndex_[idx] == i) {
-                              break;
-                          }
-                      }
-                      auto clean = p.WithVars({ { "meta_index", idx } });
+                      auto clean = p.WithVars({ { "meta_index", i } });
                       field.GenerateByteSize(p);
                       p.Print("\n");
                   }
@@ -174,6 +170,7 @@ public:
           R"cc(
             $class$()
               : $constructor_body$
+              , _cached_size_(0)
             {
             }
 
@@ -225,6 +222,7 @@ public:
             {
                 size_t total_size = 0;
                 $bytesize_body$
+                _cached_size_ = total_size;
                 return total_size;
             }
             )cc");
@@ -268,8 +266,8 @@ public:
             { "field_num", fields_.size() },
             { "field_meta",
               [&] {
-                  for (auto i : sortedIndex_) {
-                      fields_[i].GenerateMeta(p);
+                  for (auto& field : fields_) {
+                      field.GenerateMeta(p);
                       p.Print("\n");
                   }
               } },

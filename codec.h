@@ -2,11 +2,7 @@
 
 #include <bit>
 #include <cassert>
-#include <cstddef>
-#include <cstdint>
-#include <cstring>
 #include <limits>
-#include <optional>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -19,7 +15,7 @@ namespace kun {
 static_assert(sizeof(float) == 4, "");
 static_assert(sizeof(double) == 8, "");
 
-#define NOINLINE // [[clang::noinline]]
+#define NOINLINE //[[clang::noinline]]
 class Encoder
 {
 
@@ -45,7 +41,7 @@ public:
     }
 
     template <typename Msg, int index, typename T>
-    inline void Encode(const T& value)
+    inline void Encode(const T& value, size_t cached_size = 0)
     {
         constexpr auto meta = Msg::__meta__[index];
         if constexpr (is_boolean_v<T>) {
@@ -77,7 +73,8 @@ public:
             EncodeRaw(value.data(), size);
             return;
         } else if constexpr (is_message_v<T>) {
-            auto size = value.ByteSize();
+            auto size = value._cached_size_;
+            // auto size = value.ByteSize();
             EncodeLengthDelim(meta.tag, size);
             value.Encode(*this);
             return;
@@ -101,10 +98,10 @@ public:
                     EncodeLengthDelim(meta.tag, size);
                     EncodeRaw(value.data(), value.size());
                 } else {
-                    size_t size = 0;
-                    for (auto v : value) {
-                        size += Encoding<meta.encoding>::EncodedSize(v);
-                    }
+                    size_t size = cached_size;
+                    // for (auto v : value) {
+                    //     size += Encoding<meta.encoding>::EncodedSize(v);
+                    // }
                     EncodeLengthDelim(meta.tag, size);
 
                     for (auto v : value) {
@@ -113,10 +110,10 @@ public:
                 }
                 return;
             } else if constexpr (is_enum_v<EntryType>) {
-                size_t size = 0;
-                for (auto v : value) {
-                    size += Encoding<meta.encoding>::EncodedSize(v);
-                }
+                size_t size = cached_size;
+                // for (auto v : value) {
+                //     size += Encoding<meta.encoding>::EncodedSize(v);
+                // }
 
                 EncodeLengthDelim(meta.tag, size);
                 for (auto v : value) {
@@ -133,7 +130,7 @@ public:
                 return;
             } else if constexpr (is_message_v<EntryType>) {
                 for (auto& entry : value) {
-                    auto size = entry.ByteSize();
+                    auto size = entry._cached_size_; // entry.ByteSize();
 
                     EncodeLengthDelim(meta.tag, size);
                     entry.Encode(*this);
@@ -172,9 +169,9 @@ private:
     }
 
     template <typename T>
+        requires(std::is_unsigned_v<T>)
     NOINLINE inline void EncodeVarint(T value)
     {
-        static_assert(std::is_unsigned_v<T>, "Varint encode must be unsigned");
         while (value >= 0x80) [[unlikely]] {
             *ptr_ = static_cast<uint8_t>(value | 0x80);
             value >>= 7;

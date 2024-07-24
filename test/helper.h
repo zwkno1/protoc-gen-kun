@@ -391,6 +391,19 @@ inline kuntest::AAA GenAAA()
 {
     kuntest::AAA a;
 
+    // for (int i = 0; i < rng() % 100; i++) {
+    //     a.kvs[rng()] = rng();
+    // }
+
+    // for (int i = 0; i < rng() % 100; i++) {
+    //     std::string k;
+    //     GenRand(k);
+    //     kuntest::BBB v;
+    //     GenRandRepeated(v.ints);
+    //     GenRandRepeated(v.value);
+    //     a.kvs2.emplace(std::move(k), std::move(v));
+    // }
+
     GenRand(a.i32);
     GenRand(a.u32);
     GenRand(a.i64);
@@ -427,5 +440,6 @@ inline kuntest::AAA GenAAA()
     GenRandRepeated(a.sf64s);
     GenRandRepeated(a.f32s);
     GenRandRepeated(a.f64s);
+
     return a;
 }

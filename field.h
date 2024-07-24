@@ -272,10 +272,64 @@ class RepeatedIntergerFieldGenerator : public FieldGeneratorBase
 public:
     RepeatedIntergerFieldGenerator(const FieldDescriptor* field, const Options& options)
       : FieldGeneratorBase(field, options)
+      , encoding_(GetEncodingType(field))
     {
     }
 
-    void GenerateMembers(Printer& p) const override { p.Emit("std::vector<$type$> $name$;\n"); }
+    void GenerateMembers(Printer& p) const override
+    {
+        p.Emit("std::vector<$type$> $name$;\n");
+        if (encoding_ != kun::ENCODING_FIXED) {
+            p.Emit("mutable size_t _$name$_cached_size_;\n");
+        }
+    }
+
+    void GenerateByteSize(Printer& p) const override
+    {
+        if (encoding_ != kun::ENCODING_FIXED) {
+            p.Emit(R"cc(
+            {
+                size_t data_size = ::$kun_ns$::ByteSize<$encoding$>($name$);
+
+                _$name$_cached_size_ = data_size;
+
+                if(data_size != 0) {
+                    total_size += ::$kun_ns$::TagSize($tag$) + ::$kun_ns$::LengthDelimitedSize(data_size);
+                }
+            }
+            )cc");
+        } else {
+            p.Emit(R"cc(
+            {
+                size_t data_size = ::$kun_ns$::ByteSize<$encoding$>($name$);
+                if(data_size != 0) {
+                    total_size += ::$kun_ns$::TagSize($tag$) + ::$kun_ns$::LengthDelimitedSize(data_size);
+                }
+            }
+            )cc");
+        }
+    }
+
+    void GenerateEncode(Printer& p) const override
+    {
+        if (encoding_ != kun::ENCODING_FIXED) {
+            p.Emit(R"cc(
+            if (::$kun_ns$::HasValue($name$)) {
+                enc.template Encode<$class$, $meta_index$>($name$, _$name$_cached_size_);
+            }
+            )cc");
+        } else {
+            p.Emit(R"cc(
+            if (::$kun_ns$::HasValue($name$)) {
+                enc.template Encode<$class$, $meta_index$>($name$);
+            }
+            )cc");
+        }
+    }
+
+    // void GenerateMembers(Printer& p) const override { p.Emit("std::vector<$type$> $name$;\n"); }
+private:
+    uint32_t encoding_;
 };
 
 class RepeatedBooleanFieldGenerator : public FieldGeneratorBase
@@ -357,7 +411,37 @@ public:
     {
     }
 
-    void GenerateMembers(Printer& p) const override { p.Emit("std::vector<$type$> $name$;\n"); }
+    void GenerateMembers(Printer& p) const override
+    {
+        p.Emit("std::vector<$type$> $name$;\n");
+        p.Emit("mutable size_t _$name$_cached_size_;\n");
+    }
+
+    void GenerateByteSize(Printer& p) const override
+    {
+        p.Emit(R"cc(
+            {
+                size_t data_size = ::$kun_ns$::ByteSize<$encoding$>($name$);
+
+                _$name$_cached_size_ = data_size;
+
+                if(data_size != 0) {
+                    total_size += ::$kun_ns$::TagSize($tag$) + ::$kun_ns$::LengthDelimitedSize(data_size);
+                }
+            }
+            )cc");
+    }
+
+    void GenerateEncode(Printer& p) const override
+    {
+        p.Emit(R"cc(
+            if (::$kun_ns$::HasValue($name$)) {
+                enc.template Encode<$class$, $meta_index$>($name$, _$name$_cached_size_);
+            }
+            )cc");
+    }
+
+    // void GenerateMembers(Printer& p) const override { p.Emit("std::vector<$type$> $name$;\n"); }
 };
 
 class MapFieldGenerator : public FieldGeneratorBase

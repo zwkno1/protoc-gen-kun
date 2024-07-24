@@ -7,8 +7,12 @@
 #include <random>
 #include <string>
 
+#include <google/protobuf/json/json.h>
 #include <gperftools/profiler.h>
 
+#include "a.kun.h"
+#include "b.pb.h"
+#include "codec.h"
 #include "test/helper.h"
 
 int main(int argc, char* argv[])
@@ -41,7 +45,10 @@ int main(int argc, char* argv[])
     //     a.es.push_back(kuntest::Error(i));
     //     a.kvs[i] = i * 1001;
     // }
+    pbtest::AAA b = ToPb(a);
+    std::string s = b.SerializeAsString();
 
+#if 1
     {
         auto start = std::chrono::steady_clock::now();
         // ProfilerStart("bench.prof");
@@ -57,7 +64,6 @@ int main(int argc, char* argv[])
                   << "ms, bytes: " << size << std::endl;
     }
 
-    pbtest::AAA b = ToPb(a);
     {
         auto start = std::chrono::steady_clock::now();
         size_t size = 0;
@@ -68,6 +74,39 @@ int main(int argc, char* argv[])
         std::cout << "pb cost: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
                   << "ms, bytes: " << size << std::endl;
     }
+#else
+    {
+        auto start = std::chrono::steady_clock::now();
+        // ProfilerStart("bench.prof");
+        size_t size = 0;
+        for (int i = 0; i < n; i++) {
+            kuntest::AAA aaa;
+            kun::Decoder dec(s);
+            if (dec.Decode(aaa)) {
+                size++;
+            }
+        }
+        // ProfilerStop();
+        auto end = std::chrono::steady_clock::now();
+        std::cout << "kun cost: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
+                  << "ms, n: " << size << std::endl;
+    }
+
+    // std::string s;
+    // google::protobuf::json::MessageToJsonString(b, &s);
+    // std::cout << s << std::endl;
+    {
+        auto start = std::chrono::steady_clock::now();
+        size_t size = 0;
+        for (int i = 0; i < n; i++) {
+            pbtest::AAA aaa;
+            size += aaa.ParseFromString(s);
+        }
+        auto end = std::chrono::steady_clock::now();
+        std::cout << "pb cost: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
+                  << "ms, n: " << size << std::endl;
+    }
+#endif
 
     return 0;
 }

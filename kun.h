@@ -294,10 +294,14 @@ struct ConstMapEntry
 
     inline size_t ByteSize() const
     {
+        //_cached_size_ =
         return ::kun::ByteSizeWithTag<ThisType, 0>(entry_.first) + ::kun::ByteSizeWithTag<ThisType, 0>(entry_.second);
+        // return _cached_size_;
     }
 
     const std::pair<const K, V>& entry_;
+
+    // mutable size_t _cached_size_;
 };
 
 template <typename K, typename V, uint32_t encoding>
@@ -391,7 +395,7 @@ inline size_t ByteSizeWithTag(const T& value)
     constexpr auto encoding = meta.encoding;
     if constexpr (is_primitive_v<T>) {
         return TagSize(tag) + ByteSize<encoding>(value);
-    } else if (is_string_v<T> || is_message_v<T>) {
+    } else if constexpr (is_string_v<T> || is_message_v<T>) {
         return TagSize(tag) + LengthDelimitedSize(ByteSize<encoding>(value));
     } else if constexpr (is_repeated_v<T>) {
         using EntryType = typename T::value_type;

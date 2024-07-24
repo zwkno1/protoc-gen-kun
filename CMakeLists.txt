@@ -16,48 +16,8 @@ find_package(absl)
 include_directories(./ ${GTEST_INCLUDE_DIRS} ${CMAKE_BINARY_DIR}
                     ${Protobuf_INCLUDE_DIRS})
 add_executable(protoc-gen-kun main.cpp)
-target_link_libraries(
-  protoc-gen-kun
-  protobuf::libprotobuf
-  protobuf::libprotoc
-  absl::absl_check
-  absl::absl_log
-  absl::algorithm
-  absl::base
-  absl::bind_front
-  absl::bits
-  absl::btree
-  absl::cleanup
-  absl::cord
-  absl::core_headers
-  absl::debugging
-  absl::die_if_null
-  absl::dynamic_annotations
-  absl::flags
-  absl::flat_hash_map
-  absl::flat_hash_set
-  absl::function_ref
-  absl::hash
-  absl::if_constexpr
-  absl::layout
-  absl::log_initialize
-  absl::log_globals
-  absl::log_severity
-  absl::memory
-  absl::node_hash_map
-  absl::node_hash_set
-  absl::optional
-  absl::random_distributions
-  absl::random_random
-  absl::span
-  absl::status
-  absl::statusor
-  absl::strings
-  absl::synchronization
-  absl::time
-  absl::type_traits
-  absl::utility
-  absl::variant)
+target_link_libraries(protoc-gen-kun protobuf::libprotobuf protobuf::libprotoc
+                      absl::absl_check absl::flat_hash_set absl::strings)
 
 if(WITH_TEST)
   find_package(GTest)
@@ -85,48 +45,8 @@ if(WITH_TEST)
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/test/
     COMMENT "generate pb")
 
-  link_libraries(
-    protobuf::libprotobuf
-    protobuf::libprotoc
-    absl::absl_check
-    absl::absl_log
-    absl::algorithm
-    absl::base
-    absl::bind_front
-    absl::bits
-    absl::btree
-    absl::cleanup
-    absl::cord
-    absl::core_headers
-    absl::debugging
-    absl::die_if_null
-    absl::dynamic_annotations
-    absl::flags
-    absl::flat_hash_map
-    absl::flat_hash_set
-    absl::function_ref
-    absl::hash
-    absl::if_constexpr
-    absl::layout
-    absl::log_initialize
-    absl::log_globals
-    absl::log_severity
-    absl::memory
-    absl::node_hash_map
-    absl::node_hash_set
-    absl::optional
-    absl::random_distributions
-    absl::random_random
-    absl::span
-    absl::status
-    absl::statusor
-    absl::strings
-    absl::synchronization
-    absl::time
-    absl::type_traits
-    absl::utility
-    absl::variant
-    GTest::gtest_main)
+  link_libraries(protobuf::libprotobuf protobuf::libprotoc absl::absl_check
+                 absl::flat_hash_set absl::status GTest::gtest_main)
 
   include(GoogleTest)
   enable_testing()
