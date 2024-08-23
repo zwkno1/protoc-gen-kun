@@ -146,15 +146,15 @@ public:
     ALWAYS_INLINE std::string& Str() { return data_; }
 
 private:
-    ALWAYS_INLINE ALWAYS_INLINE void EnsureSpace(size_t size)
+    ALWAYS_INLINE void EnsureSpace(size_t size)
     {
         data_.resize(size);
         ptr_ = reinterpret_cast<uint8_t*>(data_.data());
     }
 
-    ALWAYS_INLINE ALWAYS_INLINE void EncodeTag(uint64_t tag) { EncodeVarint(tag); }
+    ALWAYS_INLINE void EncodeTag(uint64_t tag) { EncodeVarint(tag); }
 
-    ALWAYS_INLINE ALWAYS_INLINE void EncodeLengthDelim(uint64_t tag, uint64_t size)
+    ALWAYS_INLINE void EncodeLengthDelim(uint64_t tag, uint64_t size)
     {
         EncodeVarint(tag);
         EncodeVarint(size);
@@ -172,7 +172,7 @@ private:
     }
 
     template <typename T>
-    ALWAYS_INLINE ALWAYS_INLINE void EncodeRaw(const T* src, size_t size)
+    ALWAYS_INLINE void EncodeRaw(const T* src, size_t size)
     {
         if constexpr ((sizeof(T) != 1) && std::endian::native == std::endian::big) {
             for (auto end = src + size; src < end; src++) {
